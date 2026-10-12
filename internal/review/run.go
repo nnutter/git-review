@@ -35,20 +35,21 @@ type reviewPlan struct {
 	state     State
 	stack     *Stack
 	prior     *Attempt
-	bounded   bool
+	automatic bool
 	exhausted bool
 }
 
-// Review continues bounded reviews after completed attempts, retaining feedback.
+// Review continues automatic reviews after completed attempts, retaining feedback.
 func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (Result, error) {
 	visited := map[string]bool{}
 	hasFeedback := false
+	continueAutomatic := options.Stack == ""
 	for {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
 		result, err := r.reviewStack(ctx, options, visited)
-		if err != nil || !options.hasBounds() {
+		if err != nil || !continueAutomatic {
 			return result, err
 		}
 		switch result.Status {
@@ -125,7 +126,7 @@ func (r Reviewer) boundedPlan(ctx context.Context, options ReviewOptions, visite
 			selection.Stacks = append(selection.Stacks, stack)
 		}
 	}
-	return reviewPlan{view: view, state: state, bounded: options.hasBounds(), exhausted: rangeApproved(selected, state), stack: nextStack(selection, state)}, nil
+	return reviewPlan{view: view, state: state, automatic: options.Stack == "", exhausted: rangeApproved(selected, state), stack: nextStack(selection, state)}, nil
 }
 
 // bounds includes the complete stacks containing either endpoint.
@@ -513,10 +514,7 @@ func (options ReviewOptions) hasBounds() bool {
 }
 
 func (plan reviewPlan) rangeComplete() bool {
-	if !plan.bounded {
-		return false
-	}
-	return plan.exhausted
+	return plan.automatic && plan.exhausted
 }
 
 func rangeApproved(stacks []Stack, state State) bool {
