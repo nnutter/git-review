@@ -116,8 +116,9 @@ umpire review HEAD
 umpire review abc123..def456
 ```
 
-Without an argument, Umpire selects the earliest unresolved, non-deferred stack.
-A commit reference selects its containing stack.
+Without an argument, Umpire reviews each eligible, non-deferred stack in oldest-first order, once per invocation.
+Approval or feedback does not stop this sequence.
+A commit reference selects only its containing stack.
 The displayed `original..tip` form has inclusive endpoints and must identify exactly one complete stack.
 An explicit selection can review an approved stack again or select a later stack without approving earlier stacks.
 
@@ -158,7 +159,6 @@ After approval or feedback, Umpire continues to the next eligible stack.
 Each eligible stack opens at most once per invocation.
 Feedback remains unresolved and requires an explicit recovery or replacement choice on a later invocation.
 An incomplete review, cancellation, a required decision, or an error stops the command.
-Without bounds, each invocation reviews at most one stack.
 A boundary can identify any commit in a stack and includes the whole stack.
 An omitted start uses the first feature stack, and an omitted end uses the last.
 Boundaries must be in oldest-first order and belong to the feature-branch review range.
@@ -239,8 +239,9 @@ Successful results other than `status` contain:
 
 Needs-review outcomes are `pending` or `idle`.
 Review outcomes include `approved`, `feedback`, `incomplete`, `decision_required`, `cancelled`, `idle`, `range_complete`, and `no_waiting`.
+`range_complete` means every stack in the selected range, or the full default range, is approved.
 `no_waiting` means that deferred reviews remain unresolved, but none are eligible for automatic selection.
-Approval returns `approved`.
+An explicit stack selection returns that stack's outcome, such as `approved`.
 A valid result exits with status 0, including feedback and required decisions.
 An agent must inspect the result's status rather than equate exit status 0 with approval.
 

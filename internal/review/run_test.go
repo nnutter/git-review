@@ -42,7 +42,7 @@ func TestReviewCapturesScopeAndReadsResult(t *testing.T) {
 	require.NoError(t, err)
 	scope.Repo = path
 	savedFixture(t, scope, store, true)
-	result, err := reviewer.Review(t.Context(), ReviewOptions{})
+	result, err := reviewer.Review(t.Context(), ReviewOptions{Stack: "HEAD"})
 	require.NoError(t, err)
 	require.Equal(t, "approved", result.Status)
 	require.Len(t, result.Entries, 1)
@@ -55,6 +55,69 @@ func TestReviewCapturesScopeAndReadsResult(t *testing.T) {
 	state, err := (Store{Path: view.Path}).Load()
 	require.NoError(t, err)
 	require.Equal(t, "approved", state.Attempts[0].Status)
+}
+
+func TestReviewContinuesThroughEligibleStacksByDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		feedback   bool
+		explicit   bool
+		wantStatus string
+		statuses   []string
+	}{
+		{name: "all approved", wantStatus: "range_complete", statuses: []string{"approved", "approved", "approved", "approved"}},
+		{name: "feedback", feedback: true, wantStatus: "feedback", statuses: []string{"feedback", "approved", "approved", "approved"}},
+		{name: "explicit stack", explicit: true, wantStatus: "approved", statuses: []string{"approved"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reviewer, _, _ := testReviewer(t)
+			r := reviewer.Service.Repository
+			gitTest(t, r.Dir, "commit", "--allow-empty", "-m", "Second")
+			gitTest(t, r.Dir, "commit", "--allow-empty", "--fixup=HEAD")
+			gitTest(t, r.Dir, "commit", "--allow-empty", "-m", "Third")
+			gitTest(t, r.Dir, "commit", "--allow-empty", "-m", "Fourth")
+			view, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			path, err := WorktreePath(r.Dir)
+			require.NoError(t, err)
+			log := filepath.Join(t.TempDir(), "launch")
+			t.Setenv("TEST_LAUNCH_LOG", log)
+			selected := view.Stacks
+			options := ReviewOptions{}
+			if tc.explicit {
+				selected = view.Stacks[1:2]
+				options.Stack = selected[0].Tip
+			}
+			wantLaunch := ""
+			for i, stack := range selected {
+				scope := stack
+				scope.Repo = path
+				store := t.TempDir()
+				reviewer.Reader.Stores = append(reviewer.Reader.Stores, store)
+				session := savedFixture(t, scope, store, true)
+				if tc.feedback && i == 0 {
+					session["session_notes"] = "Please revise"
+					writeJSON(t, filepath.Join(store, "sessions/0123456789abcdef.json"), session)
+				}
+				wantLaunch += stack.Base + ".." + stack.Tip + "\n"
+			}
+			fakeTuicr(t, `printf '%s\n' "$4" >> "$TEST_LAUNCH_LOG"`)
+
+			result, err := reviewer.Review(t.Context(), options)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, result.Status)
+			launch, err := os.ReadFile(log)
+			require.NoError(t, err)
+			require.Equal(t, wantLaunch, string(launch))
+			state, err := (Store{Path: view.Path}).Load()
+			require.NoError(t, err)
+			require.Len(t, state.Attempts, len(tc.statuses))
+			for i, want := range tc.statuses {
+				require.Equal(t, selected[i].Commits, state.Attempts[i].Stack.Commits)
+				require.Equal(t, want, state.Attempts[i].Status)
+			}
+		})
+	}
 }
 
 func TestInterruptedReviewRecoveryAndReplacement(t *testing.T) {
@@ -80,7 +143,7 @@ func TestInterruptedReviewRecoveryAndReplacement(t *testing.T) {
 			fakeTuicr(t, "exit 0")
 			result, err = reviewer.Review(t.Context(), ReviewOptions{Choice: choice})
 			require.NoError(t, err)
-			require.Equal(t, "approved", result.Status)
+			require.Equal(t, "range_complete", result.Status)
 			after, err := (Store{Path: view.Path}).Load()
 			require.NoError(t, err)
 			if choice == "recover" {

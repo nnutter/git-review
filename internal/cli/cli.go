@@ -95,7 +95,7 @@ func (a *application) command() *cobra.Command {
 func (a *application) reviewCommand() *cobra.Command {
 	var recoverReview, replaceReview bool
 	var session, start, end string
-	cmd := &cobra.Command{Use: "review [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review the next stack, or select a current stack", Long: "Run tuicr in a stable detached worktree. Select a stack with a commit reference\nor inclusive original..tip endpoints. With --start or --end, continue through\nthe bounded range after approval or feedback. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "review [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		options := review.ReviewOptions{Session: session, Start: start, End: end}
 		if len(args) > 0 {
 			options.Stack = args[0]
