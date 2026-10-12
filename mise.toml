@@ -1,5 +1,6 @@
 [tools]
 go = "1.27.1"
+node = "26.11.1"
 
 [settings]
 activate_aggressive = true
@@ -15,7 +16,7 @@ run = [{ task = "fixers" }, { task = "tests" }, { task = "linters" }]
 [tasks.ci-tests]
 alias = "test"
 description = "Run tests (with the race detector)"
-run = "go test -race -shuffle=on ./..."
+run = ["go test -race -shuffle=on ./...", "node --test pi/extensions/*.test.ts"]
 
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
@@ -46,7 +47,7 @@ run = [
 [tasks.tests]
 alias = "test"
 description = "Run tests (with the race detector)"
-run = "go test -cover ./..."
+run = ["go test -cover ./...", "node --test pi/extensions/*.test.ts"]
 
 #############
 # Fix Tasks #

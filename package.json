@@ -2,6 +2,7 @@
   "name": "umpire-pi",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Pi integration and agent skill for Umpire commit reviews",
   "keywords": ["pi-package"],
   "pi": {

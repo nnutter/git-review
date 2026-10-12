@@ -40,6 +40,9 @@ Remove any manually installed copies of the Umpire extension or skill to avoid l
 
 The extension source lives in [`pi/extensions/umpire.ts`](pi/extensions/umpire.ts).
 It publishes review counts for other extensions and asks the model to use the Umpire skill when feedback exists after an agent run.
+It defers model notices while a review process holds the shared worktree lock.
+Deferred feedback remains eligible for notification after the review ends.
+Activity-query failures suppress notices rather than assume that review ended.
 It runs after the mise on-stop hook when the mise-hooks extension is present.
 
 Pi 1.1.0 does not support a package subdirectory in a Git install source.

@@ -8,7 +8,7 @@
  * Recap (and anything else) can ask for a fresh post with
  * `umpire:request-status`. The request object may set `refresh(cwd)`.
  *
- * On settle, when the feedback count is non-zero, the extension tells
+ * On settle, when feedback exists and no review process is running, the extension tells
  * the model to use the umpire skill. The same count is not sent again
  * until it changes, so an unanswered notice does not loop. That notice
  * runs from `mise-hooks:after-on-stop` when mise-hooks is loaded, so it
@@ -79,6 +79,15 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (aborted || status.feedback === lastNudgedFeedback) return;
+		const activity = await pi.exec("umpire", ["review-running", "--json"], {
+			cwd: ctx.cwd,
+			timeout: STATUS_TIMEOUT_MS,
+		});
+		if (activity.killed || activity.code !== 0) return;
+		const parsed: unknown = JSON.parse(activity.stdout);
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+		const { version, running } = parsed as { version?: unknown; running?: unknown };
+		if (version !== 1 || running !== false) return;
 		lastNudgedFeedback = status.feedback;
 		nudge(ctx, status.feedback);
 	}
