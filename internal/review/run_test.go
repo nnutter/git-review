@@ -95,9 +95,11 @@ func TestReviewContinuesThroughEligibleStacksByDefault(t *testing.T) {
 				store := t.TempDir()
 				reviewer.Reader.Stores = append(reviewer.Reader.Stores, store)
 				session := savedFixture(t, scope, store, true)
-				if tc.feedback && i == 0 {
-					session["session_notes"] = "Please revise"
-					writeJSON(t, filepath.Join(store, "sessions/0123456789abcdef.json"), session)
+				if tc.feedback {
+					if i == 0 {
+						session["session_notes"] = "Please revise"
+						writeJSON(t, filepath.Join(store, "sessions/0123456789abcdef.json"), session)
+					}
 				}
 				wantLaunch += stack.Base + ".." + stack.Tip + "\n"
 			}

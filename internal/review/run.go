@@ -49,8 +49,11 @@ func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (Result, er
 			return Result{}, err
 		}
 		result, err := r.reviewStack(ctx, options, visited)
-		if err != nil || !continueAutomatic {
+		if err != nil {
 			return result, err
+		}
+		if !continueAutomatic {
+			return result, nil
 		}
 		switch result.Status {
 		case "feedback":
@@ -514,7 +517,10 @@ func (options ReviewOptions) hasBounds() bool {
 }
 
 func (plan reviewPlan) rangeComplete() bool {
-	return plan.automatic && plan.exhausted
+	if !plan.automatic {
+		return false
+	}
+	return plan.exhausted
 }
 
 func rangeApproved(stacks []Stack, state State) bool {
