@@ -39,42 +39,35 @@ type reviewPlan struct {
 	exhausted bool
 }
 
-// Review returns a decision instead of guessing what an interrupted review means.
+// Review continues bounded reviews after completed attempts, retaining feedback.
 func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (Result, error) {
-	plan, err := r.plan(ctx, options)
-	if err != nil {
-		return Result{}, err
-	}
-	result := makeResult("review", plan.view, plan.state)
-	if plan.stack == nil {
-		if plan.rangeComplete() {
-			result.Status = "range_complete"
+	visited := map[string]bool{}
+	hasFeedback := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		result, err := r.reviewStack(ctx, options, visited)
+		if err != nil || !options.hasBounds() {
+			return result, err
+		}
+		switch result.Status {
+		case "feedback":
+			hasFeedback = true
+		case "approved":
+		case "no_waiting":
+			if hasFeedback {
+				result.Status = "feedback"
+			}
+			return result, nil
+		default:
 			return result, nil
 		}
-		if result.Status != "idle" {
-			result.Status = "no_waiting"
-		}
-		return result, nil
+		visited[result.Entries[0].Stack.Key] = true
+		// Recovery and session selection apply only to the initial attempt.
+		options.Choice = ""
+		options.Session = ""
 	}
-	if plan.prior != nil {
-		if options.Choice == "" {
-			result.Status = "decision_required"
-			result.Decision = &Decision{AttemptID: plan.prior.ID, StackKey: plan.prior.Stack.Key, Choices: []string{"recover", "replace", "cancel"}}
-			return result, nil
-		}
-	} else {
-		if options.Choice == "recover" {
-			return result, fmt.Errorf("no previous attempt to recover")
-		}
-	}
-	if options.Choice == "cancel" {
-		result.Status = "cancelled"
-		return result, nil
-	}
-	if !slices.Contains([]string{"", "recover", "replace"}, options.Choice) {
-		return result, fmt.Errorf("invalid review choice %q", options.Choice)
-	}
-	return r.execute(ctx, plan, options)
 }
 
 func (r Reviewer) begin(ctx context.Context, plan reviewPlan) (Attempt, error) {
@@ -107,7 +100,7 @@ func (r Reviewer) begin(ctx context.Context, plan reviewPlan) (Attempt, error) {
 	return attempt, err
 }
 
-func (r Reviewer) boundedPlan(ctx context.Context, options ReviewOptions) (reviewPlan, error) {
+func (r Reviewer) boundedPlan(ctx context.Context, options ReviewOptions, visited map[string]bool) (reviewPlan, error) {
 	if options.hasBounds() {
 		if options.Stack != "" {
 			return reviewPlan{}, fmt.Errorf("review bounds cannot be combined with an explicit stack")
@@ -126,7 +119,12 @@ func (r Reviewer) boundedPlan(ctx context.Context, options ReviewOptions) (revie
 		return reviewPlan{}, err
 	}
 	selection := view
-	selection.Stacks = selected
+	selection.Stacks = nil
+	for _, stack := range selected {
+		if !visited[stack.Key] {
+			selection.Stacks = append(selection.Stacks, stack)
+		}
+	}
 	return reviewPlan{view: view, state: state, bounded: options.hasBounds(), exhausted: rangeApproved(selected, state), stack: nextStack(selection, state)}, nil
 }
 
@@ -215,8 +213,8 @@ func (r Reviewer) launch(ctx context.Context, path string, stack Stack, lock *os
 	return nil
 }
 
-func (r Reviewer) plan(ctx context.Context, options ReviewOptions) (reviewPlan, error) {
-	plan, err := r.boundedPlan(ctx, options)
+func (r Reviewer) plan(ctx context.Context, options ReviewOptions, visited map[string]bool) (reviewPlan, error) {
+	plan, err := r.boundedPlan(ctx, options, visited)
 	if err != nil {
 		return plan, err
 	}
@@ -324,6 +322,43 @@ func (r Reviewer) resume(ctx context.Context, path string, plan reviewPlan, sess
 		return Result{}, err
 	}
 	return r.runAttempt(ctx, path, plan, attempt, session, lock)
+}
+
+func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visited map[string]bool) (Result, error) {
+	plan, err := r.plan(ctx, options, visited)
+	if err != nil {
+		return Result{}, err
+	}
+	result := makeResult("review", plan.view, plan.state)
+	if plan.stack == nil {
+		if plan.rangeComplete() {
+			result.Status = "range_complete"
+			return result, nil
+		}
+		if result.Status != "idle" {
+			result.Status = "no_waiting"
+		}
+		return result, nil
+	}
+	if plan.prior != nil {
+		if options.Choice == "" {
+			result.Status = "decision_required"
+			result.Decision = &Decision{AttemptID: plan.prior.ID, StackKey: plan.prior.Stack.Key, Choices: []string{"recover", "replace", "cancel"}}
+			return result, nil
+		}
+	} else {
+		if options.Choice == "recover" {
+			return result, fmt.Errorf("no previous attempt to recover")
+		}
+	}
+	if options.Choice == "cancel" {
+		result.Status = "cancelled"
+		return result, nil
+	}
+	if !slices.Contains([]string{"", "recover", "replace"}, options.Choice) {
+		return result, fmt.Errorf("invalid review choice %q", options.Choice)
+	}
+	return r.execute(ctx, plan, options)
 }
 
 func (r Reviewer) runAttempt(ctx context.Context, path string, plan reviewPlan, attempt Attempt, session string, lock *os.File) (Result, error) {
