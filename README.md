@@ -44,6 +44,10 @@ It defers model notices while a review process holds the shared worktree lock.
 Deferred feedback remains eligible for notification after the review ends.
 Activity-query failures suppress notices rather than assume that review ended.
 It runs after the mise on-stop hook when the mise-hooks extension is present.
+Interactive and RPC sessions also check every five seconds while the agent is idle.
+Idle checks can deliver deferred feedback without another agent run.
+An aborted run suspends idle notices until a non-aborted run settles.
+Monitoring stops when the session shuts down.
 
 Pi 1.1.0 does not support a package subdirectory in a Git install source.
 The root `package.json` selects the Pi extension and portable skill explicitly.

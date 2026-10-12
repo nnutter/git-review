@@ -13,6 +13,8 @@
  * until it changes, so an unanswered notice does not loop. That notice
  * runs from `mise-hooks:after-on-stop` when mise-hooks is loaded, so it
  * follows the mise on-stop hook. Otherwise it runs on `agent_settled`.
+ * Interactive and RPC sessions also check every five seconds while idle.
+ * Aborted runs suspend idle notices until a non-aborted run settles.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -30,12 +32,17 @@ import {
 
 const GIT_TIMEOUT_MS = 5_000;
 const STATUS_TIMEOUT_MS = 15_000;
+const IDLE_POLL_MS = 5_000;
 
 type AfterOnStopHook = (ctx: ExtensionContext, aborted: boolean) => Promise<void> | void;
 
 export default function (pi: ExtensionAPI) {
 	let miseCoordinates = false;
 	let lastNudgedFeedback: number | undefined;
+	let checkInFlight: Promise<void> | undefined;
+	let idleTimer: ReturnType<typeof setInterval> | undefined;
+	let generation = 0;
+	let idleNoticesAllowed = true;
 
 	async function isRepository(cwd: string): Promise<boolean> {
 		const result = await pi.exec("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -71,9 +78,9 @@ export default function (pi: ExtensionAPI) {
 		if (!ctx.hasUI) console.error(notice);
 	}
 
-	async function onStop(ctx: ExtensionContext, aborted: boolean): Promise<void> {
+	async function checkFeedback(ctx: ExtensionContext, aborted: boolean, idleOnly: boolean, epoch: number): Promise<void> {
 		const status = await readAndPublish(ctx.cwd);
-		if (!status) return;
+		if (!status || epoch !== generation) return;
 		if (status.feedback === 0) {
 			lastNudgedFeedback = undefined;
 			return;
@@ -87,9 +94,31 @@ export default function (pi: ExtensionAPI) {
 		const parsed: unknown = JSON.parse(activity.stdout);
 		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
 		const { version, running } = parsed as { version?: unknown; running?: unknown };
-		if (version !== 1 || running !== false) return;
+		if (version !== 1 || running !== false || epoch !== generation) return;
+		if (idleOnly && (!ctx.isIdle() || !idleNoticesAllowed)) return;
 		lastNudgedFeedback = status.feedback;
 		nudge(ctx, status.feedback);
+	}
+
+	async function onStop(ctx: ExtensionContext, aborted: boolean, idleOnly = false): Promise<void> {
+		if (!idleOnly) idleNoticesAllowed = false;
+		const epoch = generation;
+		while (checkInFlight) await checkInFlight;
+		if (epoch !== generation) return;
+		const pending = checkFeedback(ctx, aborted, idleOnly, epoch);
+		checkInFlight = pending;
+		try {
+			await pending;
+		} finally {
+			checkInFlight = undefined;
+			if (!idleOnly && epoch === generation) idleNoticesAllowed = !aborted;
+		}
+	}
+
+	function stopMonitoring(): void {
+		generation++;
+		if (idleTimer) clearInterval(idleTimer);
+		idleTimer = undefined;
 	}
 
 	pi.events.on(MISE_COORDINATES_EVENT, () => {
@@ -115,12 +144,31 @@ export default function (pi: ExtensionAPI) {
 	pi.events.emit(UMPIRE_READY_EVENT, undefined);
 
 	pi.on("session_start", async (_event, ctx) => {
+		stopMonitoring();
 		lastNudgedFeedback = undefined;
+		idleNoticesAllowed = true;
+		if (ctx.mode === "tui" || ctx.mode === "rpc") {
+			idleTimer = setInterval(() => {
+				if (!ctx.isIdle() || !idleNoticesAllowed || checkInFlight) return;
+				void onStop(ctx, false, true).catch(() => {
+					// Status is optional. Retry on the next idle check.
+				});
+			}, IDLE_POLL_MS);
+			idleTimer.unref();
+		}
 		try {
 			await readAndPublish(ctx.cwd);
 		} catch {
 			// Status is optional.
 		}
+	});
+
+	pi.on("agent_start", () => {
+		idleNoticesAllowed = false;
+	});
+
+	pi.on("session_shutdown", () => {
+		stopMonitoring();
 	});
 
 	pi.on("agent_settled", async (event, ctx) => {
