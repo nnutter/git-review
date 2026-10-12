@@ -145,7 +145,7 @@ Commit-message review marks count toward completion.
 A successful process exit is not proof of approval.
 An untouched review leaves no attempt in Umpire's history and does not require recovery on the next invocation.
 
-### Bound automatic selection
+### Review a range of stacks
 
 ```sh
 umpire review --start abc123
@@ -153,7 +153,12 @@ umpire review --start abc123 --end def456 --json
 umpire review --end def456
 ```
 
-Each invocation reviews at most one eligible stack within the inclusive bounds.
+Each invocation reviews eligible stacks within the inclusive bounds in oldest-first order.
+After approval or feedback, Umpire continues to the next eligible stack.
+Each eligible stack opens at most once per invocation.
+Feedback remains unresolved and requires an explicit recovery or replacement choice on a later invocation.
+An incomplete review, cancellation, a required decision, or an error stops the command.
+Without bounds, each invocation reviews at most one stack.
 A boundary can identify any commit in a stack and includes the whole stack.
 An omitted start uses the first feature stack, and an omitted end uses the last.
 Boundaries must be in oldest-first order and belong to the feature-branch review range.
@@ -161,8 +166,11 @@ Bounds cannot be combined with the positional stack selector.
 Approval and deferral still control automatic selection.
 An active attempt takes precedence over bounds and requires recovery, replacement, or cancellation.
 Recovery reopens that attempt's captured range, even when it lies outside the selected bounds.
+After approval or feedback from that attempt, review continues within the selected bounds.
+Recovery, replacement, and session choices apply only to the initial attempt.
 When all stacks within the bounds are approved, the result is `range_complete`, even if other stacks remain unresolved.
-If deferred stacks remain within the bounds, the result is `no_waiting` instead.
+If the sequence finishes with feedback within the bounds from this invocation, the result is `feedback`, not `range_complete`.
+If only deferred stacks remain unresolved within the bounds, the result is `no_waiting` instead.
 The result's view and entries still describe the feature branch, not only the bounded range.
 
 ### Recover or replace an attempt
