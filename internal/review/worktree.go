@@ -24,6 +24,26 @@ func WorktreePath(repo string) (string, error) {
 	return filepath.Join(common, "umpire", "worktree"), nil
 }
 
+// reviewRunning probes an existing lock without creating it.
+func reviewRunning(ctx context.Context, path string) (running bool, err error) {
+	file, err := os.OpenFile(path+".umpire.lock", os.O_RDONLY, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	err = syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+	if errors.Is(err, syscall.EWOULDBLOCK) {
+		return true, nil
+	}
+	return false, err
+}
+
 // lockWorktree holds an OS lock until close. Process death releases it.
 // Never unlink this file: a new inode could allow concurrent holders.
 func lockWorktree(path string) (*os.File, error) {

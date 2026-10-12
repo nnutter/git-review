@@ -1,6 +1,7 @@
 package review
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -232,6 +233,30 @@ func TestDeferredReviewsRemainPending(t *testing.T) {
 	require.Equal(t, "no_waiting", result.Status)
 	require.Len(t, result.Entries, 1)
 	require.Equal(t, "incomplete", result.Entries[0].Status)
+}
+
+func TestReviewHoldsActivityLockDuringRecoveryChoice(t *testing.T) {
+	reviewer, view, _ := testReviewer(t)
+	require.NoError(t, (Store{Path: view.Path}).Update(func(state *State) error {
+		state.Attempts = append(state.Attempts, newAttempt(view.Stacks[0], "reviewing"))
+		return nil
+	}))
+	called := false
+	reviewer.Choose = func(ctx context.Context, decision *Decision) (string, error) {
+		called = true
+		require.NotNil(t, decision)
+		running, err := reviewer.Service.ReviewRunning(ctx)
+		require.NoError(t, err)
+		require.True(t, running, "waiting for user input is part of the live review")
+		return "cancel", nil
+	}
+	result, err := reviewer.Review(t.Context(), ReviewOptions{})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Equal(t, "cancelled", result.Status)
+	running, err := reviewer.Service.ReviewRunning(t.Context())
+	require.NoError(t, err)
+	require.False(t, running)
 }
 
 func TestReviewRefusesConcurrentWorktreeUse(t *testing.T) {

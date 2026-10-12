@@ -98,6 +98,19 @@ Targets can be originals or feedback commits within that stack, but their subjec
 The summary omits approved stacks and includes active attempts, even when their original stacks disappeared from history.
 Current and historical feedback remain available in the result.
 
+### Check live review activity
+
+```sh
+umpire review-running --json
+```
+
+Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
+The command checks the repository-wide review worktree lock without changing review state or creating files.
+A running automatic review holds this lock across all selected stacks.
+A persisted `reviewing` attempt alone does not indicate a running process.
+Linked worktrees share the same activity signal.
+Command failures exit with status 1 and emit the standard versioned JSON error object.
+
 ### Collect saved feedback
 
 ```sh
