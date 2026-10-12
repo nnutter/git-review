@@ -26,6 +26,26 @@ It replays later commits without autosquashing so feedback commits remain adjace
 The user launches reviews and controls approval.
 The skill does not register `/umpire` commands or implement background workers.
 
+## Pi integration
+
+Install the Pi extension and Umpire skill from this repository:
+
+```sh
+pi install git:github.com/nnutter/umpire
+```
+
+Install the Umpire CLI separately and ensure `umpire` is on `PATH`.
+The package does not install the CLI or tuicr.
+Remove any manually installed copies of the Umpire extension or skill to avoid loading them twice.
+
+The extension source lives in [`pi/extensions/umpire.ts`](pi/extensions/umpire.ts).
+It publishes review counts for other extensions and asks the model to use the Umpire skill when feedback exists after an agent run.
+It runs after the mise on-stop hook when the mise-hooks extension is present.
+
+Pi 1.1.0 does not support a package subdirectory in a Git install source.
+The root `package.json` selects the Pi extension and portable skill explicitly.
+For local development, run `pi install .` from this checkout.
+
 ## Commands
 
 Run commands from the feature checkout or one of its subdirectories.

@@ -1,0 +1,16 @@
+{
+  "name": "umpire-pi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pi integration and agent skill for Umpire commit reviews",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./pi/extensions/umpire.ts"],
+    "skills": ["./skills/umpire"],
+    "prompts": [],
+    "themes": []
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
