@@ -88,7 +88,21 @@ func (a *application) command() *cobra.Command {
 		}
 		return renderStatus(a.output, counts)
 	}}
-	root.AddCommand(needsReview, feedback, approve, status, a.reviewCommand())
+	activity := &cobra.Command{Use: "review-running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		running, err := a.service.ReviewRunning(cmd.Context())
+		if err != nil {
+			return err
+		}
+		if a.json {
+			return writeJSON(a.output, struct {
+				Version int  `json:"version"`
+				Running bool `json:"running"`
+			}{Version: 1, Running: running})
+		}
+		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
+		return err
+	}}
+	root.AddCommand(needsReview, feedback, approve, status, activity, a.reviewCommand())
 	return root
 }
 
@@ -123,29 +137,16 @@ func (a *application) runReview(ctx context.Context, options review.ReviewOption
 		return err
 	}
 	runner := review.Reviewer{Service: a.service, Reader: reader, Input: a.input, Terminal: a.terminal}
-	result, err := runner.Review(ctx, options)
-	if err != nil {
-		return err
-	}
-	if result.Status != "decision_required" {
-		return a.write(result)
-	}
-	if a.json {
-		return a.write(result)
-	}
-	if !canPrompt(a.input, a.terminal) {
-		return a.write(result)
-	}
-	choice, err := promptChoice(ctx, a.input, a.terminal, result.Decision)
-	if errors.Is(err, huh.ErrUserAborted) {
-		choice = "cancel"
-	} else {
-		if err != nil {
-			return err
+	if !a.json && canPrompt(a.input, a.terminal) {
+		runner.Choose = func(ctx context.Context, decision *review.Decision) (string, error) {
+			choice, err := promptChoice(ctx, a.input, a.terminal, decision)
+			if errors.Is(err, huh.ErrUserAborted) {
+				return "cancel", nil
+			}
+			return choice, err
 		}
 	}
-	options.Choice = choice
-	result, err = runner.Review(ctx, options)
+	result, err := runner.Review(ctx, options)
 	if err != nil {
 		return err
 	}

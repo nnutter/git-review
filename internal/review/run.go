@@ -28,6 +28,8 @@ type Reviewer struct {
 	Reader   SavedReader
 	Input    io.Reader
 	Terminal io.Writer
+	// Choose resolves recovery decisions while the review lock remains held.
+	Choose func(context.Context, *Decision) (string, error)
 }
 
 type reviewPlan struct {
@@ -40,35 +42,31 @@ type reviewPlan struct {
 }
 
 // Review continues automatic reviews after completed attempts, retaining feedback.
-func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (Result, error) {
-	visited := map[string]bool{}
-	hasFeedback := false
-	continueAutomatic := options.Stack == ""
-	for {
-		if err := ctx.Err(); err != nil {
-			return Result{}, err
-		}
-		result, err := r.reviewStack(ctx, options, visited)
-		if err != nil || !continueAutomatic {
-			return result, err
-		}
-		switch result.Status {
-		case "feedback":
-			hasFeedback = true
-		case "approved":
-		case "no_waiting":
-			if hasFeedback {
-				result.Status = "feedback"
-			}
-			return result, nil
-		default:
-			return result, nil
-		}
-		visited[result.Entries[0].Stack.Key] = true
-		// Recovery and session selection apply only to the initial attempt.
-		options.Choice = ""
-		options.Session = ""
+func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (result Result, err error) {
+	path, err := WorktreePath(r.Service.Repository.Dir)
+	if err != nil {
+		return result, err
 	}
+	lock, err := lockWorktree(path)
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, lock.Close()) }()
+	result, err = r.reviewSequence(ctx, options, path, lock)
+	if err != nil {
+		return result, err
+	}
+	if result.Status != "decision_required" {
+		return result, nil
+	}
+	if r.Choose == nil {
+		return result, nil
+	}
+	options.Choice, err = r.Choose(ctx, result.Decision)
+	if err != nil {
+		return result, err
+	}
+	return r.reviewSequence(ctx, options, path, lock)
 }
 
 func (r Reviewer) begin(ctx context.Context, plan reviewPlan) (Attempt, error) {
@@ -164,19 +162,10 @@ func (r Reviewer) bounds(ctx context.Context, view Snapshot, first, last string)
 	return view.Stacks[start : end+1], nil
 }
 
-func (r Reviewer) execute(ctx context.Context, plan reviewPlan, options ReviewOptions) (result Result, err error) {
+func (r Reviewer) execute(ctx context.Context, plan reviewPlan, options ReviewOptions, path string, lock *os.File) (result Result, err error) {
 	if plan.stack == nil {
 		return result, fmt.Errorf("no stack selected")
 	}
-	path, err := WorktreePath(plan.stack.Repo)
-	if err != nil {
-		return result, err
-	}
-	lock, err := lockWorktree(path)
-	if err != nil {
-		return result, err
-	}
-	defer func() { err = errors.Join(err, lock.Close()) }()
 	if options.Choice == "recover" {
 		if plan.prior == nil {
 			return result, fmt.Errorf("no previous attempt to recover")
@@ -325,7 +314,41 @@ func (r Reviewer) resume(ctx context.Context, path string, plan reviewPlan, sess
 	return r.runAttempt(ctx, path, plan, attempt, session, lock)
 }
 
-func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visited map[string]bool) (Result, error) {
+func (r Reviewer) reviewSequence(ctx context.Context, options ReviewOptions, path string, lock *os.File) (Result, error) {
+	visited := map[string]bool{}
+	hasFeedback := false
+	continueAutomatic := options.Stack == ""
+	for {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		result, err := r.reviewStack(ctx, options, visited, path, lock)
+		if err != nil {
+			return result, err
+		}
+		if !continueAutomatic {
+			return result, nil
+		}
+		switch result.Status {
+		case "feedback":
+			hasFeedback = true
+		case "approved":
+		case "no_waiting":
+			if hasFeedback {
+				result.Status = "feedback"
+			}
+			return result, nil
+		default:
+			return result, nil
+		}
+		visited[result.Entries[0].Stack.Key] = true
+		// Recovery and session selection apply only to the initial attempt.
+		options.Choice = ""
+		options.Session = ""
+	}
+}
+
+func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visited map[string]bool, path string, lock *os.File) (Result, error) {
 	plan, err := r.plan(ctx, options, visited)
 	if err != nil {
 		return Result{}, err
@@ -359,7 +382,7 @@ func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visite
 	if !slices.Contains([]string{"", "recover", "replace"}, options.Choice) {
 		return result, fmt.Errorf("invalid review choice %q", options.Choice)
 	}
-	return r.execute(ctx, plan, options)
+	return r.execute(ctx, plan, options, path, lock)
 }
 
 func (r Reviewer) runAttempt(ctx context.Context, path string, plan reviewPlan, attempt Attempt, session string, lock *os.File) (Result, error) {
@@ -514,7 +537,10 @@ func (options ReviewOptions) hasBounds() bool {
 }
 
 func (plan reviewPlan) rangeComplete() bool {
-	return plan.automatic && plan.exhausted
+	if !plan.automatic {
+		return false
+	}
+	return plan.exhausted
 }
 
 func rangeApproved(stacks []Stack, state State) bool {

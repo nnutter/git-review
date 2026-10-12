@@ -26,6 +26,33 @@ It replays later commits without autosquashing so feedback commits remain adjace
 The user launches reviews and controls approval.
 The skill does not register `/umpire` commands or implement background workers.
 
+## Pi integration
+
+Install the Pi extension and Umpire skill from this repository:
+
+```sh
+pi install git:github.com/nnutter/umpire
+```
+
+Install the Umpire CLI separately and ensure `umpire` is on `PATH`.
+The package does not install the CLI or tuicr.
+Remove any manually installed copies of the Umpire extension or skill to avoid loading them twice.
+
+The extension source lives in [`pi/extensions/umpire.ts`](pi/extensions/umpire.ts).
+It publishes review counts for other extensions and asks the model to use the Umpire skill when feedback exists after an agent run.
+It defers model notices while a review process holds the shared worktree lock.
+Deferred feedback remains eligible for notification after the review ends.
+Activity-query failures suppress notices rather than assume that review ended.
+It runs after the mise on-stop hook when the mise-hooks extension is present.
+Interactive and RPC sessions also check every five seconds while the agent is idle.
+Idle checks can deliver deferred feedback without another agent run.
+An aborted run suspends idle notices until a non-aborted run settles.
+Monitoring stops when the session shuts down.
+
+Pi 1.1.0 does not support a package subdirectory in a Git install source.
+The root `package.json` selects the Pi extension and portable skill explicitly.
+For local development, run `pi install .` from this checkout.
+
 ## Commands
 
 Run commands from the feature checkout or one of its subdirectories.
@@ -77,6 +104,19 @@ Insert each feedback commit immediately after its target stack, before the next 
 Targets can be originals or feedback commits within that stack, but their subjects must identify exactly one earlier commit.
 The summary omits approved stacks and includes active attempts, even when their original stacks disappeared from history.
 Current and historical feedback remain available in the result.
+
+### Check live review activity
+
+```sh
+umpire review-running --json
+```
+
+Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
+The command checks the repository-wide review worktree lock without changing review state or creating files.
+A running automatic review holds this lock across all selected stacks.
+A persisted `reviewing` attempt alone does not indicate a running process.
+Linked worktrees share the same activity signal.
+Command failures exit with status 1 and emit the standard versioned JSON error object.
 
 ### Collect saved feedback
 

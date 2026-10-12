@@ -133,6 +133,16 @@ func (s Service) List(ctx context.Context) (Result, error) {
 	return makeResult("needs-review", view, state), nil
 }
 
+// ReviewRunning reports whether a process holds the shared review worktree lock.
+// It does not create the lock file or infer activity from persisted attempts.
+func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
+	path, err := WorktreePath(s.Repository.Dir)
+	if err != nil {
+		return false, err
+	}
+	return reviewRunning(ctx, path)
+}
+
 // Status returns ordered commit counts without changing review state.
 func (s Service) Status(ctx context.Context) ([]StateCount, error) {
 	view, err := s.Repository.Snapshot(ctx)
