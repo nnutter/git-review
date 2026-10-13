@@ -16,13 +16,14 @@ import (
 // Stack identifies an original commit and its adjacent feedback commits.
 // Field names retain the Pi state format. ChangeID is optional lineage metadata.
 type Stack struct {
-	Repo     string   `json:"repo"`
-	Commits  []string `json:"commits"`
-	Base     string   `json:"base"`
-	Tip      string   `json:"tip"`
-	Subject  string   `json:"subject"`
-	Key      string   `json:"key"`
-	ChangeID string   `json:"changeId,omitempty"`
+	Repo      string   `json:"repo"`
+	Commits   []string `json:"commits"`
+	Base      string   `json:"base"`
+	Tip       string   `json:"tip"`
+	Subject   string   `json:"subject"`
+	Key       string   `json:"key"`
+	ChangeID  string   `json:"changeId,omitempty"`
+	PatchHash string   `json:"patchHash,omitempty"`
 }
 
 func (s Stack) validate() error {
@@ -47,6 +48,13 @@ func (s Stack) validate() error {
 	}
 	if s.Subject == "" {
 		return fmt.Errorf("stack requires a subject")
+	}
+	return s.validateMetadata()
+}
+
+func (s Stack) validateMetadata() error {
+	if s.PatchHash != "" && !patchHashPattern.MatchString(s.PatchHash) {
+		return fmt.Errorf("invalid stack patch hash")
 	}
 	if s.ChangeID != "" {
 		if !changeIDPattern.MatchString(s.ChangeID) {
@@ -117,7 +125,17 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 		return view, err
 	}
 	view.Stacks, err = r.stacks(ctx, repo, view.Base, history)
-	return view, err
+	if err != nil {
+		return view, err
+	}
+	for i := range view.Stacks {
+		stack := &view.Stacks[i]
+		stack.PatchHash, err = r.patchHash(ctx, stack.Base, stack.Tip)
+		if err != nil {
+			return view, err
+		}
+	}
+	return view, nil
 }
 
 func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
@@ -163,6 +181,11 @@ func (r Repository) changeID(ctx context.Context, sha string, ids map[string]boo
 }
 
 func (r Repository) git(ctx context.Context, args ...string) (string, error) {
+	out, err := r.gitOutput(ctx, args...)
+	return strings.TrimSpace(out), err
+}
+
+func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -178,7 +201,26 @@ func (r Repository) git(ctx context.Context, args ...string) (string, error) {
 		}
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out)), nil
+	return string(out), nil
+}
+
+// patchHash fingerprints the aggregate diff, not commit metadata. Empty diffs
+// have no content identity, so unrelated empty commits cannot share approval.
+func (r Repository) patchHash(ctx context.Context, base, tip string) (string, error) {
+	patch, err := r.gitOutput(ctx, "-c", "core.quotePath=true", "-c", "diff.suppressBlankEmpty=false", "diff",
+		"--patch", "--binary", "--full-index", "--no-renames", "--no-ext-diff",
+		"--no-textconv", "--no-color", "--no-relative", "--ignore-submodules=none",
+		"--src-prefix=a/", "--dst-prefix=b/", "--output-indicator-new=+",
+		"--output-indicator-old=-", "--output-indicator-context= ",
+		"--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers",
+		"--no-indent-heuristic", "--submodule=short", "-O/dev/null", base, tip, "--")
+	if err != nil {
+		return "", err
+	}
+	if patch == "" {
+		return "", nil
+	}
+	return fmt.Sprintf("v1:%x", sha256.Sum256([]byte(patch))), nil
 }
 
 func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]Stack, error) {
@@ -234,6 +276,7 @@ func appendFeedback(stacks []Stack, targets map[string][]int, sha, subject strin
 }
 
 var (
-	feedbackSubject = regexp.MustCompile(`^(?:fixup!|reword!|amend!) (.+)$`)
-	changeIDPattern = regexp.MustCompile(`^I[0-9a-fA-F]{40}$`)
+	patchHashPattern = regexp.MustCompile(`^v1:[a-f0-9]{64}$`)
+	feedbackSubject  = regexp.MustCompile(`^(?:fixup!|reword!|amend!) (.+)$`)
+	changeIDPattern  = regexp.MustCompile(`^I[0-9a-fA-F]{40}$`)
 )

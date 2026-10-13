@@ -72,7 +72,8 @@ umpire status --json
 This read-only command counts commits in the current feature range, including attached fixups.
 Each commit inherits its stack's current state.
 Historical attempts and commits removed from the feature range do not contribute to the counts.
-Changed stacks need another review and count as `needs_review` until a new attempt records another state.
+Stacks with changed content need another review and count as `needs_review` until a new attempt records another state.
+Unchanged content can retain approval or pending feedback after commit hashes change.
 
 The command always includes all five states, even when their counts are zero.
 Text and JSON output use this order: `needs_review`, `reviewing`, `feedback`, `incomplete`, `approved`.
@@ -135,7 +136,7 @@ The optional `feedback` array contains records with these fields:
 | Field | Meaning |
 | --- | --- |
 | `attempt` | Full persisted attempt, including its ID, captured stack, saved review, response, and replacement metadata |
-| `historical` | False only for the latest unaddressed attempt on an exact current stack |
+| `historical` | False only for the latest unaddressed attempt matching a current stack by exact commits or completed review content |
 
 Saved reviews retain comments from all scopes, including drafts and session notes.
 Records appear in attempt order.
@@ -331,10 +332,24 @@ Compatibility with Pi's branch state requires Pi to adopt the `tuicr-reviews` pa
 
 ## Changed stacks and Change-Ids
 
-Approval applies only to the exact recorded commits and parent.
-Added fixups, amendments, and rebases require another review.
-Feedback from an obsolete version remains historical context, not a global blocker.
-A changed stack supersedes a prior result but does not prove that feedback was addressed.
+Umpire records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
+The hash uses SHA-256 with a `v1:` prefix and includes paths, file modes, whitespace, binary content, and diff context.
+It excludes commit messages, authors, timestamps, and commit identities.
+
+Within the same repository and branch history, matching non-empty patch hashes preserve approval and pending feedback.
+Rewording, rebasing onto unrelated changes, or squashing attached fixups can therefore preserve review status.
+A changed diff requires another review.
+Matching is conservative: a rebase that changes diff context or a touched file's blob identity can require another review.
+Empty diffs omit the hash, so unrelated empty commits cannot share approval.
+Older records without a hash still require exact commits and parent matches.
+
+Stored attempts retain their original commit scope, including feedback locations and saved session identity.
+Active and incomplete attempts do not transfer status through a patch hash.
+Session recovery continues to use the original recorded commits, not the rewritten stack.
+A newer unfinished attempt or an addressed replacement prevents an older matching approval from reappearing.
+
+Feedback from obsolete content remains historical context, not a global blocker.
+Changed stack content supersedes a prior result but does not prove that feedback was addressed.
 The next review supplies that check.
 
 When an original commit has a Gerrit `Change-Id` trailer, Umpire uses it to connect stack versions within the same repository and feature branch.

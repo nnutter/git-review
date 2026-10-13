@@ -114,8 +114,11 @@ func (s State) latest(stack Stack) *Attempt {
 		if attempt.Status == "addressed" {
 			continue
 		}
-		if sameStack(attempt.Stack, stack) {
+		if attempt.matches(stack) {
 			result = attempt
+		} else if samePatch(attempt.Stack, stack) {
+			// A newer unfinished attempt must not expose an older approval.
+			result = nil
 		}
 	}
 	return result
@@ -124,7 +127,7 @@ func (s State) latest(stack Stack) *Attempt {
 func (s State) previous(stack Stack) *Attempt {
 	for i := len(s.Attempts) - 1; i >= 0; i-- {
 		attempt := &s.Attempts[i]
-		if sameStack(attempt.Stack, stack) {
+		if attempt.matches(stack) {
 			continue
 		}
 		if sharesLineage(attempt.Stack, stack) {
@@ -154,6 +157,20 @@ func (s State) validate() error {
 	return nil
 }
 
+// matches transfers only completed outcomes. Saved sessions and interrupted
+// attempts retain their original commit scope for recovery.
+func (a Attempt) matches(stack Stack) bool {
+	if sameStack(a.Stack, stack) {
+		return true
+	}
+	switch a.Status {
+	case "approved", "feedback":
+		return samePatch(a.Stack, stack)
+	default:
+		return false
+	}
+}
+
 func (a Attempt) resets(stack Stack) bool {
 	if a.Status != "addressed" {
 		return false
@@ -161,7 +178,7 @@ func (a Attempt) resets(stack Stack) bool {
 	if a.Replacement == nil {
 		return false
 	}
-	return sameStack(*a.Replacement, stack)
+	return sameStack(*a.Replacement, stack) || samePatch(*a.Replacement, stack)
 }
 
 func (a Attempt) validate() error {
@@ -197,6 +214,16 @@ func removeIfPresent(path string) error {
 		return nil
 	}
 	return err
+}
+
+func samePatch(a, b Stack) bool {
+	if a.Repo != b.Repo {
+		return false
+	}
+	if a.PatchHash == "" {
+		return false
+	}
+	return a.PatchHash == b.PatchHash
 }
 
 func sameStack(a, b Stack) bool {

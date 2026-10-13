@@ -250,7 +250,7 @@ func approvalAllowed(view Snapshot, state State) error {
 
 func currentAttempt(view Snapshot, state State, attempt Attempt) bool {
 	for _, stack := range view.Stacks {
-		if !sameStack(stack, attempt.Stack) {
+		if !attempt.matches(stack) {
 			continue
 		}
 		latest := state.latest(stack)
