@@ -163,6 +163,11 @@ func (r Repository) changeID(ctx context.Context, sha string, ids map[string]boo
 }
 
 func (r Repository) git(ctx context.Context, args ...string) (string, error) {
+	out, err := r.gitOutput(ctx, args...)
+	return strings.TrimSpace(out), err
+}
+
+func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -178,7 +183,7 @@ func (r Repository) git(ctx context.Context, args ...string) (string, error) {
 		}
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out)), nil
+	return string(out), nil
 }
 
 func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]Stack, error) {
