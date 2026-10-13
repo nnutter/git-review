@@ -1,0 +1,153 @@
+package review
+
+import (
+	"encoding/json/jsontext"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestReviewStatusAfterStackRewrite(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, rewrite, want string
+		legacy                      bool
+	}{
+		{name: "approved reword", status: "approved", rewrite: "reword", want: "approved"},
+		{name: "approved rebase", status: "approved", rewrite: "rebase", want: "approved"},
+		{name: "approved squash", status: "approved", rewrite: "squash", want: "approved"},
+		{name: "feedback squash", status: "feedback", rewrite: "squash", want: "feedback"},
+		{name: "incomplete reword", status: "incomplete", rewrite: "reword", want: "needs_review"},
+		{name: "active reword", status: "reviewing", rewrite: "reword", want: "needs_review"},
+		{name: "changed content", status: "approved", rewrite: "content", want: "needs_review"},
+		{name: "legacy reword", status: "approved", rewrite: "reword", want: "needs_review", legacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := testRepo(t)
+			file := filepath.Join(r.Dir, "file")
+			require.NoError(t, os.WriteFile(file, []byte("one\n"), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Feature")
+			require.NoError(t, os.WriteFile(file, []byte("two\n"), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "fixup! Feature")
+			view, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			attempt := newAttempt(view.Stacks[0], tc.status)
+			if tc.legacy {
+				attempt.Stack.PatchHash = ""
+			}
+			if tc.status == "feedback" {
+				attempt.Review = jsontext.Value(`{"comments":[{"text":"Please fix this"}]}`)
+			}
+			store := Store{Path: view.Path}
+			require.NoError(t, store.Update(func(state *State) error {
+				state.Attempts = append(state.Attempts, attempt)
+				return nil
+			}))
+			service := Service{Repository: r}
+			counts, err := service.Status(t.Context())
+			require.NoError(t, err)
+			for _, count := range counts {
+				if count.State == tc.status {
+					require.Equal(t, 2, count.Count)
+				}
+			}
+			before, err := os.ReadFile(store.Path)
+			require.NoError(t, err)
+
+			rewriteTestStack(t, r, view, tc.rewrite)
+			result, err := service.List(t.Context())
+			require.NoError(t, err)
+			require.NotEqual(t, view.Stacks[0].Key, result.View.Stacks[0].Key)
+			if tc.want == "approved" {
+				require.Equal(t, "idle", result.Status)
+				require.Empty(t, result.Entries)
+				// Automatic review must not launch tuicr for preserved approval.
+				reviewed, err := (Reviewer{Service: service}).Review(t.Context(), ReviewOptions{})
+				require.NoError(t, err)
+				require.Equal(t, "range_complete", reviewed.Status)
+			} else {
+				require.Len(t, result.Entries, 1)
+				require.Equal(t, tc.want, result.Entries[0].Status)
+				if tc.want == "feedback" {
+					require.Equal(t, attempt.Stack, result.Entries[0].Attempt.Stack)
+					notes, err := service.Feedback(t.Context())
+					require.NoError(t, err)
+					require.Len(t, notes.Feedback, 1)
+					require.False(t, notes.Feedback[0].Historical)
+					require.Equal(t, attempt.ID, notes.Feedback[0].Attempt.ID)
+					require.Equal(t, attempt.Stack, notes.Feedback[0].Attempt.Stack)
+					require.JSONEq(t, string(attempt.Review), string(notes.Feedback[0].Attempt.Review))
+					_, err = service.Approve(t.Context(), "HEAD", "")
+					require.ErrorContains(t, err, "pending feedback")
+				}
+			}
+			counts, err = service.Status(t.Context())
+			require.NoError(t, err)
+			for _, count := range counts {
+				want := 0
+				if count.State == tc.want {
+					want = len(result.View.Stacks[0].Commits)
+				}
+				require.Equal(t, want, count.Count, "state %s", count.State)
+			}
+			after, err := os.ReadFile(store.Path)
+			require.NoError(t, err)
+			require.Equal(t, before, after, "status matching must not rewrite captured scopes")
+		})
+	}
+}
+
+func rewriteTestStack(t *testing.T, r Repository, view Snapshot, kind string) {
+	t.Helper()
+	switch kind {
+	case "reword":
+		gitTest(t, r.Dir, "commit", "--amend", "-m", "amend! Feature")
+	case "squash":
+		gitTest(t, r.Dir, "reset", "--soft", view.Base)
+		gitTest(t, r.Dir, "commit", "-m", "Squashed feature")
+	case "rebase":
+		gitTest(t, r.Dir, "checkout", "main")
+		require.NoError(t, os.WriteFile(filepath.Join(r.Dir, "other"), []byte("unrelated\n"), 0o600))
+		gitTest(t, r.Dir, "add", ".")
+		gitTest(t, r.Dir, "commit", "-m", "Unrelated upstream change")
+		gitTest(t, r.Dir, "checkout", "feature")
+		gitTest(t, r.Dir, "rebase", "main")
+	case "content":
+		require.NoError(t, os.WriteFile(filepath.Join(r.Dir, "file"), []byte("two \n"), 0o600))
+		gitTest(t, r.Dir, "add", ".")
+		gitTest(t, r.Dir, "commit", "--amend", "-m", "fixup! Feature")
+	default:
+		require.FailNow(t, "unknown rewrite", "kind: %s", kind)
+	}
+}
+
+func TestStackRewriteDoesNotRestoreSupersededApproval(t *testing.T) {
+	for _, status := range []string{"incomplete", "addressed"} {
+		t.Run(status, func(t *testing.T) {
+			r := testRepo(t)
+			require.NoError(t, os.WriteFile(filepath.Join(r.Dir, "file"), []byte("one\n"), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Feature")
+			service := Service{Repository: r}
+			approved, err := service.Approve(t.Context(), "HEAD", "")
+			require.NoError(t, err)
+			stack := approved.View.Stacks[0]
+			require.NoError(t, (Store{Path: approved.View.Path}).Update(func(state *State) error {
+				newer := newAttempt(stack, status)
+				if status == "addressed" {
+					newer.Replacement = &stack
+				}
+				state.Attempts = append(state.Attempts, newer)
+				return nil
+			}))
+			gitTest(t, r.Dir, "commit", "--amend", "-m", "Reworded")
+			result, err := service.List(t.Context())
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			require.Equal(t, "needs_review", result.Entries[0].Status)
+		})
+	}
+}
