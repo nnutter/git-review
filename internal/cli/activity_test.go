@@ -18,7 +18,7 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 	require.NoError(t, err)
 	check := func(cwd string, running bool) {
 		t.Helper()
-		out, terminal, err := executeBinary(t, binary, cwd, "review-running", "--json")
+		out, terminal, err := executeBinary(t, binary, cwd, "running", "--json")
 		require.NoError(t, err)
 		require.Empty(t, terminal)
 		want := `{"version":1,"running":false}`
@@ -51,7 +51,7 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 }
 
 func TestReviewRunningOutsideRepository(t *testing.T) {
-	out, terminal, err := execute(t, t.TempDir(), "review-running", "--json")
+	out, terminal, err := execute(t, t.TempDir(), "running", "--json")
 	require.Error(t, err)
 	require.Empty(t, terminal)
 	require.Contains(t, out, `"status":"error"`)

@@ -86,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (aborted || status.feedback === lastNudgedFeedback) return;
-		const activity = await pi.exec("umpire", ["review-running", "--json"], {
+		const activity = await pi.exec("umpire", ["running", "--json"], {
 			cwd: ctx.cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});

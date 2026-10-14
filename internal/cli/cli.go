@@ -80,7 +80,7 @@ func (a *application) command() *cobra.Command {
 		return a.write(result)
 	}}
 	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
-	activity := &cobra.Command{Use: "review-running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	activity := &cobra.Command{Use: "running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
 		if err != nil {
 			return err
@@ -94,14 +94,14 @@ func (a *application) command() *cobra.Command {
 		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
 		return err
 	}}
-	root.AddCommand(feedback, approve, status, activity, a.reviewCommand(), a.logCommand())
+	root.AddCommand(feedback, approve, status, activity, a.runCommand(), a.logCommand())
 	return root
 }
 
-func (a *application) reviewCommand() *cobra.Command {
+func (a *application) runCommand() *cobra.Command {
 	var recoverReview, replaceReview bool
 	var session, start, end string
-	cmd := &cobra.Command{Use: "review [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "run [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		options := review.ReviewOptions{Session: session, Start: start, End: end}
 		if len(args) > 0 {
 			options.Stack = args[0]

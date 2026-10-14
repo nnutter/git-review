@@ -22,7 +22,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 		on: (name: string, handler: Function) => handlers.set(name, handler),
 		exec: async (command: string, args: string[]) => {
 			if (command === "git") return { code: 0, killed: false, stdout: "true" };
-			if (args[0] === "review-running") {
+			if (args[0] === "running") {
 				activityCalls++;
 				await activityGate;
 				return activity;

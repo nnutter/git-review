@@ -137,7 +137,7 @@ Current and historical feedback remain available in the result.
 ### Check live review activity
 
 ```sh
-umpire review-running --json
+umpire running --json
 ```
 
 Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
@@ -180,9 +180,9 @@ Active attempts remain visible in `active`, but collecting feedback does not res
 ### Review a stack
 
 ```sh
-umpire review
-umpire review HEAD
-umpire review abc123..def456
+umpire run
+umpire run HEAD
+umpire run abc123..def456
 ```
 
 Without an argument, Umpire reviews each eligible, non-deferred stack in oldest-first order, once per invocation.
@@ -218,9 +218,9 @@ An untouched review leaves no attempt in Umpire's history and does not require r
 ### Review a range of stacks
 
 ```sh
-umpire review --start abc123
-umpire review --start abc123 --end def456 --json
-umpire review --end def456
+umpire run --start abc123
+umpire run --start abc123 --end def456 --json
+umpire run --end def456
 ```
 
 Each invocation reviews eligible stacks within the inclusive bounds in oldest-first order.
@@ -249,9 +249,9 @@ In an interactive terminal, Umpire prompts to recover, replace, or cancel.
 With JSON output or redirected streams, it returns `decision_required` without a prompt.
 
 ```sh
-umpire review --recover
-umpire review --replace
-umpire review --recover --session <session-id>
+umpire run --recover
+umpire run --replace
+umpire run --recover --session <session-id>
 ```
 
 Recovery reopens tuicr at the previous attempt's exact captured range and preserves its attempt ID.
@@ -262,7 +262,7 @@ Neither operation proceeds while the review worktree is held by a live Umpire/tu
 
 `--session` accepts an exact saved session ID, index slug, or indexed `sessions/<id>.json` path.
 It resolves ambiguous saved sessions and is not an arbitrary filesystem path.
-If an interrupted original disappeared and no lineage identifies its replacement, use `umpire review <replacement-commit> --replace`.
+If an interrupted original disappeared and no lineage identifies its replacement, use `umpire run <replacement-commit> --replace`.
 
 ### Record explicit user approval
 

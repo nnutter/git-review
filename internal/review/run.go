@@ -198,7 +198,7 @@ func (r Reviewer) launch(ctx context.Context, path string, stack Stack, lock *os
 	// Keep the worktree locked if Umpire dies while tuicr is still running.
 	cmd.ExtraFiles = []*os.File{lock}
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tuicr interrupted or failed; run umpire review to recover or replace: %w", err)
+		return fmt.Errorf("tuicr interrupted or failed; run umpire run to recover or replace: %w", err)
 	}
 	return nil
 }
@@ -290,11 +290,11 @@ func (r Reviewer) recover(plan reviewPlan, attempt Attempt, selector string) (Re
 		if err != nil {
 			return Result{}, err
 		}
-		result := makeResult("review", plan.view, state)
+		result := makeResult("run", plan.view, state)
 		result.Status = "cancelled"
 		return result, nil
 	}
-	result := Result{Version: 1, Command: "review", Status: finished.Status, View: plan.view, Entries: []Entry{{Stack: finished.Stack, Status: finished.Status, Attempt: &finished}}, Active: []Attempt{}}
+	result := Result{Version: 1, Command: "run", Status: finished.Status, View: plan.view, Entries: []Entry{{Stack: finished.Stack, Status: finished.Status, Attempt: &finished}}, Active: []Attempt{}}
 	if finished.Status == "incomplete" {
 		result.Decision = &Decision{AttemptID: finished.ID, StackKey: finished.Stack.Key, Choices: []string{"recover", "replace", "cancel"}}
 	}
@@ -353,7 +353,7 @@ func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visite
 	if err != nil {
 		return Result{}, err
 	}
-	result := makeResult("review", plan.view, plan.state)
+	result := makeResult("run", plan.view, plan.state)
 	if plan.stack == nil {
 		if plan.rangeComplete() {
 			result.Status = "range_complete"
@@ -526,7 +526,7 @@ func replacementStack(plan reviewPlan) (Stack, error) {
 			return stack, nil
 		}
 	}
-	return Stack{}, fmt.Errorf("interrupted stack is no longer current; select its replacement with umpire review <commit>")
+	return Stack{}, fmt.Errorf("interrupted stack is no longer current; select its replacement with umpire run <commit>")
 }
 
 func (options ReviewOptions) hasBounds() bool {

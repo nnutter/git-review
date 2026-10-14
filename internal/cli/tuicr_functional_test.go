@@ -67,7 +67,7 @@ func TestRealTuicrFeedback(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildUmpire(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "review", "--json")
+	session := startTerminal(t, binary, dir, env, "run", "--json")
 	session.waitFor(t, "feature.txt")
 	list := runRealCommand(t, "tuicr", dir, env, "review", "list", "--all")
 	var sessions []struct {
@@ -114,7 +114,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildUmpire(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "review", "--json")
+	session := startTerminal(t, binary, dir, env, "run", "--json")
 	session.waitFor(t, "feature.txt")
 	session.send(t, ":set noreviewed\rr")
 	session.waitFor(t, "1/2")
@@ -143,7 +143,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 		}
 		return !saved[0].Active
 	}, 5*time.Second, 20*time.Millisecond)
-	before := runRealCommand(t, binary, dir, env, "review", "--json")
+	before := runRealCommand(t, binary, dir, env, "run", "--json")
 	var decision struct {
 		Status   string `json:"status"`
 		Decision struct {
@@ -153,7 +153,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(before), &decision))
 	require.Equal(t, "decision_required", decision.Status)
 	require.NotEmpty(t, decision.Decision.AttemptID)
-	resumed := startTerminal(t, binary, dir, env, "review", "HEAD", "--recover", "--json")
+	resumed := startTerminal(t, binary, dir, env, "run", "HEAD", "--recover", "--json")
 	resumed.waitFor(t, "feature.txt")
 	resumed.waitFor(t, "1/2")
 	resumed.send(t, ":set noreviewed\rr")
@@ -186,7 +186,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			env := realTuicrEnvironment(t)
 			binary := buildUmpire(t)
 			dir := realFeatureRepo(t)
-			initial := startTerminal(t, binary, dir, env, "review", "--json")
+			initial := startTerminal(t, binary, dir, env, "run", "--json")
 			initial.waitFor(t, "feature.txt")
 			initial.send(t, ":set noreviewed\rr")
 			initial.waitFor(t, "1/2")
@@ -203,7 +203,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(before), &prior))
 			require.Equal(t, "incomplete", prior.Status)
 			require.Len(t, prior.Entries, 1)
-			prompt := startTerminal(t, binary, dir, env, "review")
+			prompt := startTerminal(t, binary, dir, env, "run")
 			prompt.waitFor(t, "A previous review attempt exists")
 			switch choice {
 			case "recover":
@@ -256,7 +256,7 @@ func TestRealTuicrCleanReview(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildUmpire(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "review", "HEAD", "--json")
+	session := startTerminal(t, binary, dir, env, "run", "HEAD", "--json")
 	session.waitFor(t, "feature.txt")
 	session.send(t, ":set noreviewed\r")
 	session.send(t, "rr")
