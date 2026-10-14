@@ -42,6 +42,9 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 		require.Equal(t, 1, result.Version)
 		require.Equal(t, "status", result.Command)
 		require.Equal(t, "pending", result.Status)
+		require.Equal(t, view.Branch, result.View.Branch)
+		require.Equal(t, view.Target, result.View.Target)
+		require.Equal(t, view.Path, result.View.Path)
 		require.Equal(t, want, result.Summary)
 		require.Len(t, result.Entries, len(view.Stacks))
 		for i, entry := range result.Entries {
@@ -55,6 +58,9 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, terminal)
 	require.Contains(t, out, "COMMITS (inclusive)")
+	require.NotContains(t, out, "Feature review:")
+	require.NotContains(t, out, "Target:")
+	require.NotContains(t, out, "State:")
 	for i, stack := range view.Stacks {
 		require.Contains(t, out, shortStack(stack))
 		require.Contains(t, out, stack.Subject)

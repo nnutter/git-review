@@ -33,10 +33,6 @@ func render(output io.Writer, result review.Result) error {
 
 func renderResult(result review.Result) (string, error) {
 	var out strings.Builder
-	heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	fmt.Fprintln(&out, heading.Render("Feature review: "+safeText(result.View.Branch)))
-	fmt.Fprintln(&out, "Target: "+safeText(result.View.Target))
-	fmt.Fprintln(&out, "State: "+safeText(result.View.Path))
 	if len(result.Entries) > 0 {
 		rows := make([][]string, 0, len(result.Entries))
 		for _, entry := range result.Entries {
