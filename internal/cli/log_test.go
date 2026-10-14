@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/creack/pty"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +72,93 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, out)
 	require.Empty(t, terminal)
+}
+
+func TestLogDifft(t *testing.T) {
+	dir := featureRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.txt"), []byte("example content\n"), 0o600))
+	git(t, dir, "add", "example.txt")
+	git(t, dir, "commit", "-m", "Add example")
+	git(t, dir, "config", "diff.external", "false")
+	tools := t.TempDir()
+	difft := filepath.Join(tools, "difft")
+	require.NoError(t, os.WriteFile(difft, []byte("#!/bin/sh\nprintf 'External diff: %s\\n' \"$1\"\ncat \"$5\"\n"), 0o700))
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, terminal, err := execute(t, dir, "log", "-p")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "+example content\n")
+	require.NotContains(t, out, "External diff:")
+
+	out, terminal, err = execute(t, dir, "log", "--difft")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "External diff: example.txt\nexample content\n")
+	require.NotContains(t, out, "diff --git")
+	require.Equal(t, "false", git(t, dir, "config", "diff.external"))
+
+	require.NoError(t, os.WriteFile(difft, []byte("#!/bin/sh\necho 'difft failed' >&2\nexit 1\n"), 0o700))
+	_, terminal, err = execute(t, dir, "log", "--difft")
+	require.ErrorContains(t, err, "git log:")
+	require.Contains(t, terminal, "difft failed")
+}
+
+func TestLogHunkPager(t *testing.T) {
+	binary := buildGitReview(t)
+	dir := featureRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.txt"), []byte("example content\n"), 0o600))
+	git(t, dir, "add", "example.txt")
+	git(t, dir, "commit", "-m", "Add example")
+	git(t, dir, "config", "core.pager", "false")
+	git(t, dir, "config", "color.ui", "false")
+	tools := t.TempDir()
+	capture := filepath.Join(tools, "pager-output")
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "hunk"), []byte("#!/bin/sh\n[ \"$1\" = pager ] || exit 1\ncat > \"$HUNK_OUTPUT\"\n"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "difft"), []byte("#!/bin/sh\nprintf 'External diff: %s\\n' \"$1\"\ncat \"$5\"\n"), 0o700))
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HUNK_OUTPUT", capture)
+	t.Setenv("TERM", "xterm")
+
+	out, terminal, err := executeBinary(t, binary, dir, "log", "--hunk")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "+example content\n")
+	_, err = os.Stat(capture)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	for _, tc := range []struct {
+		name  string
+		flags []string
+		want  string
+	}{
+		{name: "hunk", flags: []string{"--hunk"}, want: "+example content\n"},
+		{name: "hunk and difft", flags: []string{"--hunk", "--difft"}, want: "External diff: example.txt\nexample content\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			master, slave, err := pty.Open()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, slave.Close())
+				require.NoError(t, master.Close())
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, binary, append([]string{"log"}, tc.flags...)...)
+			cmd.Dir = dir
+			cmd.Stdout = slave
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			// The fake pager writes to capture, so the terminal needs no reader.
+			require.NoError(t, cmd.Run(), "%s", stderr.String())
+			saved, err := os.ReadFile(capture)
+			require.NoError(t, err)
+			require.Contains(t, string(saved), tc.want)
+			require.Contains(t, string(saved), "Add example")
+			require.NoError(t, os.Remove(capture))
+		})
+	}
+	require.Equal(t, "false", git(t, dir, "config", "core.pager"))
 }
 
 func TestLogReportsGitAndUsageErrors(t *testing.T) {
