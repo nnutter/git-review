@@ -27,6 +27,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 				await activityGate;
 				return activity;
 			}
+			assert.deepEqual(args, ["status", "--needs-review", "--json"]);
 			return { code: 0, killed: false, stdout: JSON.stringify({ version: 1, command: "status", status: "pending", summary: [
 				{ state: "needs_review", count: 2 },
 				{ state: "reviewing", count: 1 },

@@ -15,11 +15,12 @@ The user controls review and approval.
 Use this read-only command for current stack details and commit counts:
 
 ```sh
-umpire status --json
+umpire status --needs-review --json
 ```
 
 Successful output is a versioned result object with `"version":1` and `"command":"status"`.
-The `entries` array includes all current stacks, including approved stacks.
+With `--needs-review`, the `entries` array omits approved stacks.
+The `view.stacks` array includes all current stacks.
 The `summary` array contains elements with a `state` string and a `count` integer.
 The summary always includes these states in this order, including zero counts:
 
@@ -37,10 +38,9 @@ An empty feature range produces all five states with zero counts.
 
 Check the exit code and output version before interpreting the result.
 Command failures exit with status `1` and emit the standard versioned JSON error object instead.
-Use `umpire status --needs-review --json` to omit approved entries without filtering the summary.
 
-Use `umpire needs-review --json` for unresolved stack details and current commit IDs.
-Its `entries` omits approved stacks, but its `view.stacks` includes them.
+Read `entries` for unresolved stack details and current commit IDs.
+The summary counts the full feature range even when entries are filtered.
 Use `umpire feedback --json` for saved comments and session notes.
 Counts do not identify feedback targets or authorize approval.
 
@@ -96,7 +96,7 @@ Recovery opens an interactive review and requires the user's choice.
 5. Record the original branch tip and create a uniquely named local backup branch.
 6. Identify each current target stack through Umpire's `view.stacks` data.
 
-Use `umpire needs-review --json` when you need a fresh view of current stacks.
+Use `umpire status --needs-review --json` when you need a fresh view of current stacks.
 Its `view.stacks` includes approved stacks too.
 Do not derive targets from comment file paths or commit subjects alone.
 Use full commit IDs.
@@ -186,7 +186,7 @@ Git generates nested feedback subjects when the target is an existing feedback c
 
 1. Check that the checkout uses the feature branch after integration.
 2. Run the repository's required checks on the final history.
-3. Run `umpire needs-review --json` to check stack formation.
+3. Run `umpire status --needs-review --json` to check stack formation.
 4. Check that each feedback commit immediately follows its target stack tip.
 5. Report each attempt ID, addressed comment, new stack range, and validation result.
 

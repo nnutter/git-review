@@ -1,7 +1,7 @@
 /**
  * Umpire extension.
  *
- * Reads `umpire status --json` for the current Git feature branch and
+ * Reads `umpire status --needs-review --json` for the current Git feature branch and
  * publishes the counts on `umpire:status`. Outside a Git repository it
  * publishes nothing.
  *
@@ -55,7 +55,7 @@ export default function (pi: ExtensionAPI) {
 	/** Publish status for a repository. Returns undefined when there is nothing to publish. */
 	async function readAndPublish(cwd: string): Promise<UmpireStatus | undefined> {
 		if (!(await isRepository(cwd))) return undefined;
-		const result = await pi.exec("umpire", ["status", "--json"], {
+		const result = await pi.exec("umpire", ["status", "--needs-review", "--json"], {
 			cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});

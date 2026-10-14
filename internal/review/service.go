@@ -121,15 +121,6 @@ func (s Service) Feedback(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-// List returns unresolved current stacks without changing review state.
-func (s Service) List(ctx context.Context) (Result, error) {
-	view, state, err := s.snapshotState(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	return makeResult("needs-review", view, state), nil
-}
-
 // ReviewRunning reports whether a process holds the shared review worktree lock.
 // It does not create the lock file or infer activity from persisted attempts.
 func (s Service) ReviewRunning(ctx context.Context) (bool, error) {

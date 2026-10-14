@@ -2,7 +2,7 @@
  * Pure helpers for the umpire extension.
  *
  * No Pi imports: node:test can load this file outside the Pi process.
- * `umpire status --json` prints a versioned result with a summary of { state, count }.
+ * `umpire status --needs-review --json` prints a result with a summary of { state, count }.
  * Failures print a versioned object and exit non-zero. Callers check
  * the exit code before parsing.
  */
@@ -35,7 +35,7 @@ export function reviewStatusLine(needsReview: number, total: number): string {
 }
 
 /**
- * Parse successful `umpire status --json` stdout.
+ * Parse successful `umpire status --needs-review --json` stdout.
  * Returns undefined for unsupported results, malformed rows, or a missing required state.
  * `total` is the sum of every state in summary, including states this parser does not name.
  */

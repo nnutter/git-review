@@ -89,10 +89,10 @@ umpire status --needs-review --json
 ```
 
 This read-only command displays all stacks in the current feature range, including approved stacks, in oldest-first order.
-The table uses the same columns and details as `needs-review`, with fixups grouped in inclusive commit ranges.
-Use `--needs-review` for text output identical to `umpire needs-review`.
+The table shows each stack's status, inclusive commit range, and subject, with fixups grouped together.
+Use `--needs-review` to omit approved stacks and show unresolved stacks and active attempts.
 
-JSON output uses the same versioned result structure as `needs-review`, with `"command":"status"` and an additional `summary` array.
+JSON output uses the shared versioned result structure, with `"command":"status"` and a `summary` array.
 By default, `entries` includes all current stacks.
 With `--needs-review`, `entries` omits approved stacks, but `summary` still counts the full feature range.
 The result's `status` remains `pending` while unresolved stacks or active attempts exist, and `idle` otherwise.
@@ -123,15 +123,15 @@ Command failures use the standard JSON error object.
 ### List unresolved stacks
 
 ```sh
-umpire needs-review
-umpire needs-review --json
+umpire status --needs-review
+umpire status --needs-review --json
 ```
 
 A stack contains one original commit and its immediately following `fixup!`, `amend!`, or `reword!` commits.
 Create feedback commits with `git commit --fixup=<stack-tip>`, `--fixup=amend:<stack-tip>`, or `--fixup=reword:<stack-tip>`.
 Insert each feedback commit immediately after its target stack, before the next original commit.
 Targets can be originals or feedback commits within that stack, but their subjects must identify exactly one earlier commit.
-The summary omits approved stacks and includes active attempts, even when their original stacks disappeared from history.
+The filtered table omits approved stacks and includes active attempts, even when their original stacks disappeared from history.
 Current and historical feedback remain available in the result.
 
 ### Check live review activity
@@ -317,7 +317,7 @@ An agent must inspect the result's status rather than equate exit status 0 with 
 Command failures exit with status 1 and produce a JSON error object:
 
 ```json
-{"version":1,"command":"needs-review","status":"error","error":"..."}
+{"version":1,"command":"status","status":"error","error":"..."}
 ```
 
 Help, version, and shell completion output retain their usual formats.

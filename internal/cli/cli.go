@@ -53,13 +53,6 @@ type application struct {
 func (a *application) command() *cobra.Command {
 	root := &cobra.Command{Use: "umpire", Short: "Review feature-branch commit stacks with tuicr", Long: "Umpire tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
-	needsReview := &cobra.Command{Use: "needs-review", Short: "Show unresolved stacks and active review attempts", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		result, err := a.service.List(cmd.Context())
-		if err != nil {
-			return err
-		}
-		return a.write(result)
-	}}
 	feedback := &cobra.Command{Use: "feedback", Short: "Read current and historical saved feedback without launching tuicr", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		result, err := a.service.Feedback(cmd.Context())
 		if err != nil {
@@ -86,7 +79,7 @@ func (a *application) command() *cobra.Command {
 		}
 		return a.write(result)
 	}}
-	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks only, like needs-review")
+	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
 	activity := &cobra.Command{Use: "review-running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
 		if err != nil {
@@ -101,7 +94,7 @@ func (a *application) command() *cobra.Command {
 		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
 		return err
 	}}
-	root.AddCommand(needsReview, feedback, approve, status, activity, a.reviewCommand(), a.logCommand())
+	root.AddCommand(feedback, approve, status, activity, a.reviewCommand(), a.logCommand())
 	return root
 }
 

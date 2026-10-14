@@ -69,22 +69,23 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	filtered, terminal, err := executeBinary(t, binary, dir, "status", "--needs-review")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
-	listed, _, err := executeBinary(t, binary, dir, "needs-review")
-	require.NoError(t, err)
-	require.Equal(t, listed, filtered)
+	for _, stack := range view.Stacks[:4] {
+		require.Contains(t, filtered, shortStack(stack))
+	}
 	require.NotContains(t, filtered, shortStack(view.Stacks[4]))
 	filtered, _, err = executeBinary(t, binary, dir, "status", "--needs-review", "--json")
 	require.NoError(t, err)
-	listed, _, err = executeBinary(t, binary, dir, "needs-review", "--json")
-	require.NoError(t, err)
-	var result, unresolved review.Result
+	var result review.Result
 	require.NoError(t, json.Unmarshal([]byte(filtered), &result))
-	require.NoError(t, json.Unmarshal([]byte(listed), &unresolved))
 	require.Equal(t, "status", result.Command)
 	require.Equal(t, want, result.Summary)
-	unresolved.Command = "status"
-	unresolved.Summary = want
-	require.Equal(t, unresolved, result)
+	require.Len(t, result.Entries, 4)
+	for i, entry := range result.Entries {
+		require.Equal(t, view.Stacks[i], entry.Stack)
+		require.Equal(t, want[i].State, entry.Status)
+	}
+	require.Len(t, result.View.Stacks, 5)
+	require.Len(t, result.Active, 1)
 	after, err := os.ReadFile(view.Path)
 	require.NoError(t, err)
 	require.Equal(t, before, after)
@@ -133,10 +134,7 @@ func TestStatusWithoutReviewHistory(t *testing.T) {
 	require.Contains(t, out, "Add feature")
 	filtered, _, err := execute(t, dir, "status", "--needs-review")
 	require.NoError(t, err)
-	listed, _, err := execute(t, dir, "needs-review")
-	require.NoError(t, err)
-	require.Equal(t, listed, filtered)
-	require.Contains(t, filtered, "No reviews pending.")
+	require.Equal(t, "No reviews pending.\n", filtered)
 }
 
 func TestStatusOutsideGitRepository(t *testing.T) {
