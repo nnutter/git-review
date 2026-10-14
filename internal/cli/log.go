@@ -8,17 +8,20 @@ import (
 )
 
 func (a *application) logCommand() *cobra.Command {
-	var patch, ignoreAllSpace, stat, difft bool
+	var patch, ignoreAllSpace, stat, difft, hunk bool
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Show commits after the upstream in oldest-first order",
-		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nOutput uses Git's format and pager, not git-review's review state.",
+		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nUse --difft for Difftastic or --hunk for hunk pager. Both imply --patch.\nOutput uses Git's format and pager, not git-review's review state.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.json {
 				return fmt.Errorf("log does not support --json")
 			}
 			var args []string
+			if hunk {
+				args = append(args, "-c", "core.pager=hunk pager")
+			}
 			if difft {
 				args = append(args, "-c", "diff.external=difft")
 			}
@@ -26,7 +29,7 @@ func (a *application) logCommand() *cobra.Command {
 			if difft {
 				args = append(args, "--ext-diff")
 			}
-			if patch || difft {
+			if patch || difft || hunk {
 				args = append(args, "-p")
 			}
 			if ignoreAllSpace {
@@ -50,5 +53,6 @@ func (a *application) logCommand() *cobra.Command {
 	cmd.Flags().BoolVarP(&ignoreAllSpace, "ignore-all-space", "w", false, "Ignore whitespace changes in patches")
 	cmd.Flags().BoolVar(&stat, "stat", false, "Show diff statistics for each commit")
 	cmd.Flags().BoolVar(&difft, "difft", false, "Show patches with difft (requires difft on PATH)")
+	cmd.Flags().BoolVar(&hunk, "hunk", false, "Show patches with hunk pager (requires hunk on PATH)")
 	return cmd
 }

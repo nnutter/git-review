@@ -71,6 +71,7 @@ git-review log -p
 git-review log -pw
 git-review log --stat
 git-review log --difft
+git-review log --hunk
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
@@ -79,7 +80,12 @@ Use `--stat` to show diff statistics, with or without patches.
 Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.
 Use `--difft` to show patches with [Difftastic](https://difftastic.wilfred.me.uk/), which requires `difft` on `PATH`.
 This option implies `--patch` and runs Git with `-c diff.external=difft` and `--ext-diff`.
-It does not change your saved Git configuration.
+Use `--hunk` to show patches through `hunk pager`, which requires `hunk` on `PATH`.
+This option implies `--patch` and runs Git with `-c core.pager='hunk pager'`.
+Git starts the pager only when stdout is a terminal, so redirected output remains unpaged.
+You can combine `--hunk` and `--difft` to send Difftastic output through `hunk pager`.
+Neither option changes your saved Git configuration.
+Git's normal precedence rules still apply, including overrides from `GIT_EXTERNAL_DIFF` and `GIT_PAGER`.
 Output uses Git's format and pager without reading or changing review state.
 The command does not support `--json` or revision arguments.
 Unlike review commands, it uses the upstream range directly and permits merge commits.
