@@ -1,4 +1,4 @@
-// Package testenv provides process isolation for Umpire's test suites.
+// Package testenv provides process isolation for git-review's test suites.
 // It is imported only by test files, never by the command or review library.
 package testenv
 

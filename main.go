@@ -1,11 +1,11 @@
-// Command umpire is the umpire command line tool.
+// Command git-review is the git-review command line tool.
 package main
 
 import (
 	"context"
 	"os"
 
-	"github.com/nnutter/umpire/internal/cli"
+	"github.com/nnutter/git-review/internal/cli"
 )
 
 func main() {

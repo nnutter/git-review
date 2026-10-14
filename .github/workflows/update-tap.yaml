@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      FORMULA_NAME: umpire
+      FORMULA_NAME: git-review
       TAP_OWNER: nnutter
       TAP_REPOSITORY: homebrew-tap
     steps:

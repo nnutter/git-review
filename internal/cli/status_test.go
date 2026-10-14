@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Add feature")
 	for _, subject := range []string{"Active", "Feedback", "Partial", "Approved"} {
@@ -32,18 +32,60 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	}))
 	before, err := os.ReadFile(view.Path)
 	require.NoError(t, err)
-	want := `[{"state":"needs_review","count":2},{"state":"reviewing","count":1},{"state":"feedback","count":1},{"state":"incomplete","count":1},{"state":"approved","count":2}]`
+	want := []review.StateCount{{State: "needs_review", Count: 2}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 2}}
 	for _, args := range [][]string{{"status", "--json"}, {"--json", "status"}} {
 		out, terminal, err := executeBinary(t, binary, dir, args...)
 		require.NoError(t, err)
 		require.Empty(t, terminal)
-		// Exact array order and zero fields are part of the command's contract.
-		require.Equal(t, want+"\n", out)
+		var result review.Result
+		require.NoError(t, json.Unmarshal([]byte(out), &result))
+		require.Equal(t, 1, result.Version)
+		require.Equal(t, "status", result.Command)
+		require.Equal(t, "pending", result.Status)
+		require.Equal(t, view.Branch, result.View.Branch)
+		require.Equal(t, view.Target, result.View.Target)
+		require.Equal(t, view.Path, result.View.Path)
+		require.Equal(t, want, result.Summary)
+		require.Len(t, result.Entries, len(view.Stacks))
+		for i, entry := range result.Entries {
+			require.Equal(t, view.Stacks[i], entry.Stack)
+			require.Equal(t, want[i].State, entry.Status)
+		}
+		require.Len(t, result.Active, 1)
+		require.Equal(t, "reviewing", result.Active[0].ID)
 	}
 	out, terminal, err := executeBinary(t, binary, dir, "status")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
-	require.Equal(t, "Needs review: 2\nReviewing: 1\nFeedback: 1\nIncomplete: 1\nApproved: 2\n", out)
+	require.Contains(t, out, "COMMITS (inclusive)")
+	require.NotContains(t, out, "Feature review:")
+	require.NotContains(t, out, "Target:")
+	require.NotContains(t, out, "State:")
+	for i, stack := range view.Stacks {
+		require.Contains(t, out, shortStack(stack))
+		require.Contains(t, out, stack.Subject)
+		require.Contains(t, out, statusLabel(want[i].State))
+	}
+	filtered, terminal, err := executeBinary(t, binary, dir, "status", "--needs-review")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	for _, stack := range view.Stacks[:4] {
+		require.Contains(t, filtered, shortStack(stack))
+	}
+	require.NotContains(t, filtered, shortStack(view.Stacks[4]))
+	filtered, _, err = executeBinary(t, binary, dir, "status", "--needs-review", "--json")
+	require.NoError(t, err)
+	var result review.Result
+	require.NoError(t, json.Unmarshal([]byte(filtered), &result))
+	require.Equal(t, "status", result.Command)
+	require.Equal(t, want, result.Summary)
+	require.Len(t, result.Entries, 4)
+	for i, entry := range result.Entries {
+		require.Equal(t, view.Stacks[i], entry.Stack)
+		require.Equal(t, want[i].State, entry.Status)
+	}
+	require.Len(t, result.View.Stacks, 5)
+	require.Len(t, result.Active, 1)
 	after, err := os.ReadFile(view.Path)
 	require.NoError(t, err)
 	require.Equal(t, before, after)
@@ -52,11 +94,15 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Approved")
 	out, _, err = executeBinary(t, binary, dir, "status", "--json")
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"state":"needs_review","count":5},{"state":"reviewing","count":1},{"state":"feedback","count":1},{"state":"incomplete","count":1},{"state":"approved","count":0}]`+"\n", out)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 5}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
 	git(t, dir, "reset", "--hard", "main")
 	out, _, err = executeBinary(t, binary, dir, "status", "--json")
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"state":"needs_review","count":0},{"state":"reviewing","count":0},{"state":"feedback","count":0},{"state":"incomplete","count":0},{"state":"approved","count":0}]`+"\n", out)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, []review.StateCount{{State: "needs_review"}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
+	require.Empty(t, result.Entries)
+	require.Equal(t, "pending", result.Status) // The historical active attempt still needs recovery.
 }
 
 func TestStatusWithoutReviewHistory(t *testing.T) {
@@ -66,15 +112,35 @@ func TestStatusWithoutReviewHistory(t *testing.T) {
 	out, terminal, err := execute(t, dir, "status", "--json")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
-	require.JSONEq(t, `[{"state":"needs_review","count":1},{"state":"reviewing","count":0},{"state":"feedback","count":0},{"state":"incomplete","count":0},{"state":"approved","count":0}]`+"\n", out)
+	var result review.Result
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 1}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
+	require.Len(t, result.Entries, 1)
+	require.Equal(t, "needs_review", result.Entries[0].Status)
 	_, err = os.Stat(view.Path)
 	require.ErrorIs(t, err, os.ErrNotExist)
+
+	_, _, err = execute(t, dir, "approve", "HEAD")
+	require.NoError(t, err)
+	out, _, err = execute(t, dir, "status", "--json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, "idle", result.Status)
+	require.Len(t, result.Entries, 1)
+	require.Equal(t, "approved", result.Entries[0].Status)
+	out, _, err = execute(t, dir, "status")
+	require.NoError(t, err)
+	require.Contains(t, out, "Approved")
+	require.Contains(t, out, "Add feature")
+	filtered, _, err := execute(t, dir, "status", "--needs-review")
+	require.NoError(t, err)
+	require.Equal(t, "No reviews pending.\n", filtered)
 }
 
 func TestStatusOutsideGitRepository(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := t.TempDir()
-	const message = "umpire must be used from inside a Git repository"
+	const message = "git-review must be used from inside a Git repository"
 	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
 		t.Run(args[len(args)-1], func(t *testing.T) {
 			out, terminal, err := executeBinary(t, binary, dir, args...)
@@ -90,7 +156,7 @@ func TestStatusOutsideGitRepository(t *testing.T) {
 				require.Equal(t, message, failed.Error)
 			} else {
 				require.Empty(t, out)
-				require.Contains(t, terminal, "Umpire must be used from inside a Git repository.")
+				require.Contains(t, terminal, "Git-Review must be used from inside a Git repository.")
 				require.NotContains(t, terminal, "git symbolic-ref")
 				require.NotContains(t, terminal, "detached HEAD")
 				require.NotContains(t, terminal, "exit status")

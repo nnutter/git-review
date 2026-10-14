@@ -16,7 +16,7 @@ func TestReviewCheckoutIsSharedAcrossFeatureWorktrees(t *testing.T) {
 	path, err := WorktreePath(r.Dir)
 	require.NoError(t, err)
 	common := gitTest(t, r.Dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	require.Equal(t, filepath.Join(common, "umpire", "worktree"), path)
+	require.Equal(t, filepath.Join(common, "git-review", "worktree"), path)
 	otherPath, err := WorktreePath(other)
 	require.NoError(t, err)
 	require.Equal(t, path, otherPath)

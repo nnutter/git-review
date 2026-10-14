@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func buildUmpire(t *testing.T) string {
+func buildGitReview(t *testing.T) string {
 	t.Helper()
-	binary := filepath.Join(t.TempDir(), "umpire")
+	binary := filepath.Join(t.TempDir(), "git-review")
 	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "../..")
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "%s", out)

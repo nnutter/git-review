@@ -1,4 +1,4 @@
-// Package cli exposes Umpire's review workflow through Cobra and Fang.
+// Package cli exposes git-review's review workflow through Cobra and Fang.
 package cli
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 // Execute runs a command with explicit process streams and checkout location.
@@ -51,15 +51,8 @@ type application struct {
 }
 
 func (a *application) command() *cobra.Command {
-	root := &cobra.Command{Use: "umpire", Short: "Review feature-branch commit stacks with tuicr", Long: "Umpire tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
+	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
-	needsReview := &cobra.Command{Use: "needs-review", Short: "Show unresolved stacks and active review attempts", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		result, err := a.service.List(cmd.Context())
-		if err != nil {
-			return err
-		}
-		return a.write(result)
-	}}
 	feedback := &cobra.Command{Use: "feedback", Short: "Read current and historical saved feedback without launching tuicr", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		result, err := a.service.Feedback(cmd.Context())
 		if err != nil {
@@ -78,17 +71,16 @@ func (a *application) command() *cobra.Command {
 		}
 		return a.write(result)
 	}}
-	status := &cobra.Command{Use: "status", Short: "Show commit counts in each review state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		counts, err := a.service.Status(cmd.Context())
+	var onlyNeedsReview bool
+	status := &cobra.Command{Use: "status", Short: "Show all feature stacks and their review states", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		result, err := a.service.Status(cmd.Context(), onlyNeedsReview)
 		if err != nil {
 			return err
 		}
-		if a.json {
-			return writeJSON(a.output, counts)
-		}
-		return renderStatus(a.output, counts)
+		return a.write(result)
 	}}
-	activity := &cobra.Command{Use: "review-running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
+	activity := &cobra.Command{Use: "running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
 		if err != nil {
 			return err
@@ -102,14 +94,14 @@ func (a *application) command() *cobra.Command {
 		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
 		return err
 	}}
-	root.AddCommand(needsReview, feedback, approve, status, activity, a.reviewCommand())
+	root.AddCommand(feedback, approve, status, activity, a.runCommand(), a.logCommand())
 	return root
 }
 
-func (a *application) reviewCommand() *cobra.Command {
+func (a *application) runCommand() *cobra.Command {
 	var recoverReview, replaceReview bool
 	var session, start, end string
-	cmd := &cobra.Command{Use: "review [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "run [<commit_stack>]", Aliases: []string{"challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		options := review.ReviewOptions{Session: session, Start: start, End: end}
 		if len(args) > 0 {
 			options.Stack = args[0]

@@ -3,8 +3,8 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import umpire from "./umpire.ts";
-import { MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT, UMPIRE_STATUS_EVENT } from "./umpire/support.ts";
+import gitReview from "./git-review.ts";
+import { MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT } from "./git-review/support.ts";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
 	const events = new EventEmitter();
@@ -22,23 +22,25 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 		on: (name: string, handler: Function) => handlers.set(name, handler),
 		exec: async (command: string, args: string[]) => {
 			if (command === "git") return { code: 0, killed: false, stdout: "true" };
-			if (args[0] === "review-running") {
+			assert.equal(command, "git-review");
+			if (args[0] === "running") {
 				activityCalls++;
 				await activityGate;
 				return activity;
 			}
-			return { code: 0, killed: false, stdout: JSON.stringify([
+			assert.deepEqual(args, ["status", "--needs-review", "--json"]);
+			return { code: 0, killed: false, stdout: JSON.stringify({ version: 1, command: "status", status: "pending", summary: [
 				{ state: "needs_review", count: 2 },
 				{ state: "reviewing", count: 1 },
 				{ state: "feedback", count: feedback },
 				{ state: "incomplete", count: 0 },
 				{ state: "approved", count: 0 },
-			]) };
+			] }) };
 		},
 		sendUserMessage: (message: string) => messages.push(message),
 	} as unknown as ExtensionAPI;
-	events.on(UMPIRE_STATUS_EVENT, data => published.push(data));
-	umpire(pi);
+	events.on("git-review:status", data => published.push(data));
+	gitReview(pi);
 	return {
 		events, messages, published, ctx,
 		setActivity: (result: typeof activity) => { activity = result; },

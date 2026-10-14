@@ -24,6 +24,7 @@ type Result struct {
 	Active   []Attempt        `json:"active"`
 	Decision *Decision        `json:"decision,omitzero"`
 	Feedback []FeedbackRecord `json:"feedback,omitempty"`
+	Summary  []StateCount     `json:"summary,omitempty"`
 }
 
 // FeedbackRecord retains captured scope and marks obsolete or addressed notes.
@@ -120,19 +121,6 @@ func (s Service) Feedback(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-// List returns unresolved current stacks without changing review state.
-func (s Service) List(ctx context.Context) (Result, error) {
-	view, err := s.Repository.Snapshot(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	state, err := (Store{Path: view.Path}).Load()
-	if err != nil {
-		return Result{}, err
-	}
-	return makeResult("needs-review", view, state), nil
-}
-
 // ReviewRunning reports whether a process holds the shared review worktree lock.
 // It does not create the lock file or infer activity from persisted attempts.
 func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
@@ -143,16 +131,37 @@ func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
 	return reviewRunning(ctx, path)
 }
 
-// Status returns ordered commit counts without changing review state.
-func (s Service) Status(ctx context.Context) ([]StateCount, error) {
+// Status returns current stacks and ordered commit counts without changing review state.
+// needsReview omits approved entries but does not filter the summary.
+func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
+	view, state, err := s.snapshotState(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	result := makeResult("status", view, state)
+	result.Summary = countStates(view, state)
+	if !needsReview {
+		result.Entries = make([]Entry, 0, len(view.Stacks))
+		for _, stack := range view.Stacks {
+			result.Entries = append(result.Entries, entryFor(state, stack))
+		}
+	}
+	return result, nil
+}
+
+func (s Service) snapshotState(ctx context.Context) (Snapshot, State, error) {
 	view, err := s.Repository.Snapshot(ctx)
 	if err != nil {
-		return nil, err
+		return Snapshot{}, State{}, err
 	}
 	state, err := (Store{Path: view.Path}).Load()
 	if err != nil {
-		return nil, err
+		return Snapshot{}, State{}, err
 	}
+	return view, state, nil
+}
+
+func countStates(view Snapshot, state State) []StateCount {
 	counts := []StateCount{
 		{State: "needs_review"},
 		{State: "reviewing"},
@@ -169,7 +178,7 @@ func (s Service) Status(ctx context.Context) ([]StateCount, error) {
 			}
 		}
 	}
-	return counts, nil
+	return counts
 }
 
 func (s Service) selectRange(ctx context.Context, view Snapshot, first, last string) ([]Stack, error) {

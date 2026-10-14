@@ -47,9 +47,9 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 				return nil
 			}))
 			service := Service{Repository: r}
-			counts, err := service.Status(t.Context())
+			statusResult, err := service.Status(t.Context(), false)
 			require.NoError(t, err)
-			for _, count := range counts {
+			for _, count := range statusResult.Summary {
 				if count.State == tc.status {
 					require.Equal(t, 2, count.Count)
 				}
@@ -58,7 +58,7 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 			require.NoError(t, err)
 
 			rewriteTestStack(t, r, view, tc.rewrite)
-			result, err := service.List(t.Context())
+			result, err := service.Status(t.Context(), true)
 			require.NoError(t, err)
 			require.NotEqual(t, view.Stacks[0].Key, result.View.Stacks[0].Key)
 			if tc.want == "approved" {
@@ -84,9 +84,9 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 					require.ErrorContains(t, err, "pending feedback")
 				}
 			}
-			counts, err = service.Status(t.Context())
+			statusResult, err = service.Status(t.Context(), false)
 			require.NoError(t, err)
-			for _, count := range counts {
+			for _, count := range statusResult.Summary {
 				want := 0
 				if count.State == tc.want {
 					want = len(result.View.Stacks[0].Commits)
@@ -144,7 +144,7 @@ func TestStackRewriteDoesNotRestoreSupersededApproval(t *testing.T) {
 				return nil
 			}))
 			gitTest(t, r.Dir, "commit", "--amend", "-m", "Reworded")
-			result, err := service.List(t.Context())
+			result, err := service.Status(t.Context(), true)
 			require.NoError(t, err)
 			require.Len(t, result.Entries, 1)
 			require.Equal(t, "needs_review", result.Entries[0].Status)

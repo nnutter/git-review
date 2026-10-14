@@ -1,4 +1,4 @@
-module github.com/nnutter/umpire
+module github.com/nnutter/git-review
 
 go 1.27.1
 

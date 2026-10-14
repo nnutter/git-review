@@ -13,17 +13,8 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
-
-func renderStatus(output io.Writer, counts []review.StateCount) error {
-	var out strings.Builder
-	for _, count := range counts {
-		fmt.Fprintf(&out, "%s: %d\n", statusLabel(count.State), count.Count)
-	}
-	_, err := io.WriteString(output, out.String())
-	return err
-}
 
 func render(output io.Writer, result review.Result) error {
 	var text string
@@ -42,10 +33,6 @@ func render(output io.Writer, result review.Result) error {
 
 func renderResult(result review.Result) (string, error) {
 	var out strings.Builder
-	heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	fmt.Fprintln(&out, heading.Render("Feature review: "+safeText(result.View.Branch)))
-	fmt.Fprintln(&out, "Target: "+safeText(result.View.Target))
-	fmt.Fprintln(&out, "State: "+safeText(result.View.Path))
 	if len(result.Entries) > 0 {
 		rows := make([][]string, 0, len(result.Entries))
 		for _, entry := range result.Entries {
@@ -77,7 +64,7 @@ func renderResult(result review.Result) (string, error) {
 	}
 	if result.Decision != nil {
 		fmt.Fprintf(&out, "Attempt: %s\n", safeText(result.Decision.AttemptID))
-		fmt.Fprintln(&out, "Choose umpire review --recover, umpire review --replace, or leave the attempt unchanged.")
+		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
 }

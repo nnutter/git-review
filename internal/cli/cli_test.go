@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -46,21 +46,29 @@ func execute(t *testing.T, dir string, args ...string) (string, string, error) {
 }
 
 func TestCommandsShareStructuredResults(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
-	for _, args := range [][]string{{"needs-review", "--json"}, {"--json", "needs-review"}} {
-		out, terminal, err := executeBinary(t, binary, dir, args...)
+	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, tc := range []struct {
+		binary string
+		args   []string
+	}{
+		{binary: binary, args: []string{"status", "--needs-review", "--json"}},
+		{binary: binary, args: []string{"--json", "status", "--needs-review"}},
+		{binary: "git", args: []string{"review", "status", "--needs-review", "--json"}},
+	} {
+		out, terminal, err := executeBinary(t, tc.binary, dir, tc.args...)
 		require.NoError(t, err)
 		require.Empty(t, terminal)
 		require.Equal(t, 1, strings.Count(out, "\n"))
 		var result review.Result
 		require.NoError(t, json.Unmarshal([]byte(out), &result))
-		require.Equal(t, "needs-review", result.Command)
+		require.Equal(t, "status", result.Command)
 		require.Equal(t, "needs_review", result.Entries[0].Status)
 		require.Len(t, result.Entries[0].Stack.Commits[0], 40)
 		require.NotContains(t, out, "\x1b")
 	}
-	out, terminal, err := executeBinary(t, binary, dir, "needs-review")
+	out, terminal, err := executeBinary(t, binary, dir, "status", "--needs-review")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
 	require.Contains(t, out, "Needs review")
@@ -75,7 +83,7 @@ func TestCommandsShareStructuredResults(t *testing.T) {
 	require.Equal(t, "approved", approved.Status)
 	require.Equal(t, "approve", approved.Command)
 	require.Equal(t, "user-command", approved.Entries[0].Attempt.ApprovalSource)
-	out, _, err = executeBinary(t, binary, dir, "needs-review", "--json")
+	out, _, err = executeBinary(t, binary, dir, "status", "--needs-review", "--json")
 	require.NoError(t, err)
 	var listed review.Result
 	require.NoError(t, json.Unmarshal([]byte(out), &listed))
@@ -84,15 +92,15 @@ func TestCommandsShareStructuredResults(t *testing.T) {
 }
 
 func TestJSONErrorsIncludeArgumentAndGitFailures(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	git(t, dir, "branch", "--unset-upstream")
 	for _, args := range [][]string{
-		{"needs-review", "--json"},
+		{"status", "--needs-review", "--json"},
 		{"approve", "--json"},
-		{"review", "--recover", "--replace", "--json"},
+		{"run", "--recover", "--replace", "--json"},
 		{"not-a-command", "--json"},
-		{"--json", "needs-review", "--unknown"},
+		{"--json", "status", "--needs-review", "--unknown"},
 	} {
 		out, terminal, err := executeBinary(t, binary, dir, args...)
 		var exit *exec.ExitError
@@ -116,7 +124,7 @@ func TestReviewBoundsReachAutomaticSelection(t *testing.T) {
 		state.Attempts = append(state.Attempts, review.Attempt{ID: "bounded", Stack: view.Stacks[1], Status: "incomplete", StartedAt: "2026-01-01T00:00:00Z"})
 		return nil
 	}))
-	out, terminal, err := execute(t, dir, "review", "--start", "HEAD", "--end", "HEAD", "--json")
+	out, terminal, err := execute(t, dir, "run", "--start", "HEAD", "--end", "HEAD", "--json")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
 	var result review.Result
@@ -142,14 +150,15 @@ func TestReviewAliasProducesDecisionWithoutPromptOrStateChanges(t *testing.T) {
 	var result review.Result
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, "decision_required", result.Status)
+	require.Equal(t, "run", result.Command)
 	require.NotNil(t, result.Decision)
 	require.Equal(t, []string{"recover", "replace", "cancel"}, result.Decision.Choices)
 	after, err := os.ReadFile(view.Path)
 	require.NoError(t, err)
 	require.Equal(t, before, after)
-	out, _, err = execute(t, dir, "review")
+	out, _, err = execute(t, dir, "run")
 	require.NoError(t, err)
-	require.Contains(t, out, "umpire review --recover")
+	require.Contains(t, out, "git-review run --recover")
 }
 
 func TestTerminalRenderingRetainsFeedbackAndRemovesControlSequences(t *testing.T) {
@@ -159,7 +168,7 @@ func TestTerminalRenderingRetainsFeedbackAndRemovesControlSequences(t *testing.T
 	attempt := review.Attempt{ID: "feedback", Stack: view.Stacks[0], Status: "feedback", StartedAt: "2026-01-01T00:00:00Z"}
 	attempt.Review = jsontext.Value(`{"id":"saved","version":"1.3","reviewed":1,"files":2,"complete":false,"comments":[{"content":"Revise validation\u001b[31m","location":"line","path":"main.go","stored_line":"12"}],"sessionNotes":"Explain the change"}`)
 	require.NoError(t, (review.Store{Path: view.Path}).Update(func(state *review.State) error { state.Attempts = append(state.Attempts, attempt); return nil }))
-	out, _, err := execute(t, dir, "needs-review")
+	out, _, err := execute(t, dir, "status", "--needs-review")
 	require.NoError(t, err)
 	require.Contains(t, out, "Feedback")
 	require.Contains(t, out, "main.go:12: Revise validation")
@@ -174,7 +183,7 @@ func TestReviewKeepsTuicrOutputOffJSONStdout(t *testing.T) {
 	bin := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "tuicr"), []byte("#!/bin/sh\nprintf 'tuicr terminal output\\n' >&2\nprintf 'exported feedback\\n'\n"), 0o700))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	out, terminal, err := execute(t, dir, "review", "--json")
+	out, terminal, err := execute(t, dir, "run", "--json")
 	require.NoError(t, err)
 	require.Equal(t, "tuicr terminal output\n", terminal)
 	var result review.Result
@@ -184,12 +193,12 @@ func TestReviewKeepsTuicrOutputOffJSONStdout(t *testing.T) {
 	require.NotContains(t, out, "exported feedback")
 }
 
-func TestTuicrKeepsWorktreeLockedAfterUmpireDies(t *testing.T) {
+func TestTuicrKeepsWorktreeLockedAfterGitReviewDies(t *testing.T) {
 	dir := featureRepo(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	bin := t.TempDir()
-	binary := filepath.Join(bin, "umpire")
+	binary := filepath.Join(bin, "git-review")
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "../..")
 	buildOut, err := build.CombinedOutput()
 	require.NoError(t, err, "%s", buildOut)
@@ -200,7 +209,7 @@ func TestTuicrKeepsWorktreeLockedAfterUmpireDies(t *testing.T) {
 	script := "#!/bin/sh\nset -eu\nprintf started > \"$TEST_STARTED\"\nwhile [ ! -f \"$TEST_EXIT\" ]; do sleep 0.05; done\nprintf finished > \"$TEST_STARTED\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "tuicr"), []byte(script), 0o700))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	cmd := exec.CommandContext(t.Context(), binary, "review", "--json")
+	cmd := exec.CommandContext(t.Context(), binary, "run", "--json")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Start())
 	defer func() {
@@ -216,7 +225,7 @@ func TestTuicrKeepsWorktreeLockedAfterUmpireDies(t *testing.T) {
 	require.Eventually(t, func() bool { _, err := os.Stat(started); return err == nil }, 5*time.Second, 10*time.Millisecond)
 	require.NoError(t, cmd.Process.Kill())
 	require.Error(t, cmd.Wait())
-	out, _, err := execute(t, dir, "review", "--replace", "--json")
+	out, _, err := execute(t, dir, "run", "--replace", "--json")
 	require.ErrorContains(t, err, "worktree is in use")
 	var result errorResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
@@ -227,10 +236,16 @@ func TestHelpAndVersion(t *testing.T) {
 	out, _, err := execute(t, t.TempDir(), "--help")
 	require.NoError(t, err)
 	require.Contains(t, out, "approve")
-	require.Contains(t, out, "review")
+	require.Contains(t, out, "run")
+	require.Contains(t, out, "running")
 	require.Contains(t, out, "--json")
 	require.NotContains(t, out, "confirm")
 	require.NotContains(t, out, "challenge")
+	for _, name := range []string{"needs-review", "review", "review-running"} {
+		out, _, err = execute(t, t.TempDir(), name)
+		require.ErrorContains(t, err, "unknown command")
+		require.Empty(t, out)
+	}
 	out, _, err = execute(t, t.TempDir(), "--version")
 	require.NoError(t, err)
 	require.Contains(t, out, "test-version")

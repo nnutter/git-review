@@ -9,10 +9,10 @@ source = "git@github.com:nnutter/go-template.git"
 [answers]
 copyright_holder = "Nathan Nutter"
 copyright_year = "2026"
-formula_name = "umpire"
+formula_name = "git-review"
 go_version = "1.27.1"
-module_path = "github.com/nnutter/umpire"
-project_name = "umpire"
+module_path = "github.com/nnutter/git-review"
+project_name = "git-review"
 tap_owner = "nnutter"
 tap_repository = "homebrew-tap"
 with_homebrew = true
