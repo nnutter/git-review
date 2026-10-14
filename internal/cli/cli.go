@@ -102,7 +102,7 @@ func (a *application) command() *cobra.Command {
 		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
 		return err
 	}}
-	root.AddCommand(needsReview, feedback, approve, status, activity, a.reviewCommand())
+	root.AddCommand(needsReview, feedback, approve, status, activity, a.reviewCommand(), a.logCommand())
 	return root
 }
 

@@ -62,6 +62,21 @@ An absent upstream, detached HEAD, merge commits, or ambiguous fixup placement i
 If the branch tracks its own remote branch, the review range can be empty.
 Configure the intended upstream explicitly with Git.
 
+### Show commits after the upstream
+
+```sh
+umpire log
+umpire log -p
+umpire log -pw
+```
+
+This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
+Use `-p` or `--patch` to show patches.
+Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.
+Output uses Git's format and pager without reading or changing review state.
+The command does not support `--json` or revision arguments.
+Unlike review commands, it uses the upstream range directly and permits merge commits.
+
 ### Count commits by review state
 
 ```sh
