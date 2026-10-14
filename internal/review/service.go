@@ -122,11 +122,7 @@ func (s Service) Feedback(ctx context.Context) (Result, error) {
 
 // List returns unresolved current stacks without changing review state.
 func (s Service) List(ctx context.Context) (Result, error) {
-	view, err := s.Repository.Snapshot(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	state, err := (Store{Path: view.Path}).Load()
+	view, state, err := s.snapshotState(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -145,14 +141,26 @@ func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
 
 // Status returns ordered commit counts without changing review state.
 func (s Service) Status(ctx context.Context) ([]StateCount, error) {
-	view, err := s.Repository.Snapshot(ctx)
+	view, state, err := s.snapshotState(ctx)
 	if err != nil {
 		return nil, err
+	}
+	return countStates(view, state), nil
+}
+
+func (s Service) snapshotState(ctx context.Context) (Snapshot, State, error) {
+	view, err := s.Repository.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, State{}, err
 	}
 	state, err := (Store{Path: view.Path}).Load()
 	if err != nil {
-		return nil, err
+		return Snapshot{}, State{}, err
 	}
+	return view, state, nil
+}
+
+func countStates(view Snapshot, state State) []StateCount {
 	counts := []StateCount{
 		{State: "needs_review"},
 		{State: "reviewing"},
@@ -169,7 +177,7 @@ func (s Service) Status(ctx context.Context) ([]StateCount, error) {
 			}
 		}
 	}
-	return counts, nil
+	return counts
 }
 
 func (s Service) selectRange(ctx context.Context, view Snapshot, first, last string) ([]Stack, error) {
