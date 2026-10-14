@@ -8,7 +8,7 @@ import (
 )
 
 func (a *application) logCommand() *cobra.Command {
-	var patch, ignoreAllSpace, stat bool
+	var patch, ignoreAllSpace, stat, difft bool
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Show commits after the upstream in oldest-first order",
@@ -18,8 +18,15 @@ func (a *application) logCommand() *cobra.Command {
 			if a.json {
 				return fmt.Errorf("log does not support --json")
 			}
-			args := []string{"log", "@{u}..HEAD", "--reverse"}
-			if patch {
+			var args []string
+			if difft {
+				args = append(args, "-c", "diff.external=difft")
+			}
+			args = append(args, "log", "@{u}..HEAD", "--reverse")
+			if difft {
+				args = append(args, "--ext-diff")
+			}
+			if patch || difft {
 				args = append(args, "-p")
 			}
 			if ignoreAllSpace {
@@ -42,5 +49,6 @@ func (a *application) logCommand() *cobra.Command {
 	cmd.Flags().BoolVarP(&patch, "patch", "p", false, "Show the patch for each commit")
 	cmd.Flags().BoolVarP(&ignoreAllSpace, "ignore-all-space", "w", false, "Ignore whitespace changes in patches")
 	cmd.Flags().BoolVar(&stat, "stat", false, "Show diff statistics for each commit")
+	cmd.Flags().BoolVar(&difft, "difft", false, "Show patches with difft (requires difft on PATH)")
 	return cmd
 }

@@ -69,6 +69,36 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 	require.Empty(t, terminal)
 }
 
+func TestLogDifft(t *testing.T) {
+	dir := featureRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.txt"), []byte("example content\n"), 0o600))
+	git(t, dir, "add", "example.txt")
+	git(t, dir, "commit", "-m", "Add example")
+	git(t, dir, "config", "diff.external", "false")
+	tools := t.TempDir()
+	difft := filepath.Join(tools, "difft")
+	require.NoError(t, os.WriteFile(difft, []byte("#!/bin/sh\nprintf 'External diff: %s\\n' \"$1\"\ncat \"$5\"\n"), 0o700))
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, terminal, err := execute(t, dir, "log", "-p")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "+example content\n")
+	require.NotContains(t, out, "External diff:")
+
+	out, terminal, err = execute(t, dir, "log", "--difft")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "External diff: example.txt\nexample content\n")
+	require.NotContains(t, out, "diff --git")
+	require.Equal(t, "false", git(t, dir, "config", "diff.external"))
+
+	require.NoError(t, os.WriteFile(difft, []byte("#!/bin/sh\necho 'difft failed' >&2\nexit 1\n"), 0o700))
+	_, terminal, err = execute(t, dir, "log", "--difft")
+	require.ErrorContains(t, err, "git log:")
+	require.Contains(t, terminal, "difft failed")
+}
+
 func TestLogReportsGitAndUsageErrors(t *testing.T) {
 	dir := featureRepo(t)
 	git(t, dir, "branch", "--unset-upstream")

@@ -70,12 +70,16 @@ git-review log
 git-review log -p
 git-review log -pw
 git-review log --stat
+git-review log --difft
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
 Use `-p` or `--patch` to show patches.
 Use `--stat` to show diff statistics, with or without patches.
 Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.
+Use `--difft` to show patches with [Difftastic](https://difftastic.wilfred.me.uk/), which requires `difft` on `PATH`.
+This option implies `--patch` and runs Git with `-c diff.external=difft` and `--ext-diff`.
+It does not change your saved Git configuration.
 Output uses Git's format and pager without reading or changing review state.
 The command does not support `--json` or revision arguments.
 Unlike review commands, it uses the upstream range directly and permits merge commits.
