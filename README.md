@@ -1,6 +1,6 @@
-# Umpire
+# git-review
 
-Umpire tracks user review of feature-branch commit stacks with [tuicr](https://github.com/agavra/tuicr).
+git-review tracks user review of feature-branch commit stacks with [tuicr](https://github.com/agavra/tuicr).
 It runs independently of Pi or any other coding agent.
 Cobra and Fang provide the command interface, Lip Gloss renders summaries, and Huh provides the recovery prompt.
 
@@ -12,34 +12,35 @@ Cobra and Fang provide the command interface, Lip Gloss renders summaries, and H
 - Go 1.27.1 or later to build from source.
 
 ```sh
-go install github.com/nnutter/umpire@latest
+go install github.com/nnutter/git-review@latest
 ```
 
-For a local build, run `go build -o umpire .`.
+For a local build, run `go build -o git-review .`.
+With `git-review` on `PATH`, you can also invoke it as `git review`.
 
 ## Agent skill
 
-The portable [Umpire skill](skills/umpire/SKILL.md) instructs an agent to retrieve saved feedback and prepare amendments for re-review.
-Load it in your agent or install `skills/umpire/` in the agent's supported skills location.
-The initial workflow uses `umpire feedback --json` and native Git fixups targeting each stack tip.
+The portable [git-review skill](skills/git-review/SKILL.md) instructs an agent to retrieve saved feedback and prepare amendments for re-review.
+Load it in your agent or install `skills/git-review/` in the agent's supported skills location.
+The initial workflow uses `git-review feedback --json` and native Git fixups targeting each stack tip.
 It replays later commits without autosquashing so feedback commits remain adjacent to their targets.
 The user launches reviews and controls approval.
-The skill does not register `/umpire` commands or implement background workers.
+The skill does not register `/git-review` commands or implement background workers.
 
 ## Pi integration
 
-Install the Pi extension and Umpire skill from this repository:
+Install the Pi extension and git-review skill from this repository:
 
 ```sh
-pi install git:github.com/nnutter/umpire
+pi install git:github.com/nnutter/git-review
 ```
 
-Install the Umpire CLI separately and ensure `umpire` is on `PATH`.
+Install the git-review CLI separately and ensure `git-review` is on `PATH`.
 The package does not install the CLI or tuicr.
-Remove any manually installed copies of the Umpire extension or skill to avoid loading them twice.
+Remove any manually installed copies of the git-review extension or skill to avoid loading them twice.
 
-The extension source lives in [`pi/extensions/umpire.ts`](pi/extensions/umpire.ts).
-It publishes review counts for other extensions and asks the model to use the Umpire skill when feedback exists after an agent run.
+The extension source lives in [`pi/extensions/git-review.ts`](pi/extensions/git-review.ts).
+It publishes review counts for other extensions and asks the model to use the git-review skill when feedback exists after an agent run.
 It defers model notices while a review process holds the shared worktree lock.
 Deferred feedback remains eligible for notification after the review ends.
 Activity-query failures suppress notices rather than assume that review ended.
@@ -56,7 +57,7 @@ For local development, run `pi install .` from this checkout.
 ## Commands
 
 Run commands from the feature checkout or one of its subdirectories.
-Umpire reviews commits after the merge-base with `@{upstream}`.
+git-review reviews commits after the merge-base with `@{upstream}`.
 It does not fetch branches or use Pi's target override.
 An absent upstream, detached HEAD, merge commits, or ambiguous fixup placement is an error.
 If the branch tracks its own remote branch, the review range can be empty.
@@ -65,10 +66,10 @@ Configure the intended upstream explicitly with Git.
 ### Show commits after the upstream
 
 ```sh
-umpire log
-umpire log -p
-umpire log -pw
-umpire log --stat
+git-review log
+git-review log -p
+git-review log -pw
+git-review log --stat
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
@@ -82,10 +83,10 @@ Unlike review commands, it uses the upstream range directly and permits merge co
 ### Show feature stacks and review state
 
 ```sh
-umpire status
-umpire status --needs-review
-umpire status --json
-umpire status --needs-review --json
+git-review status
+git-review status --needs-review
+git-review status --json
+git-review status --needs-review --json
 ```
 
 This read-only command displays all stacks in the current feature range, including approved stacks, in oldest-first order.
@@ -123,8 +124,8 @@ Command failures use the standard JSON error object.
 ### List unresolved stacks
 
 ```sh
-umpire status --needs-review
-umpire status --needs-review --json
+git-review status --needs-review
+git-review status --needs-review --json
 ```
 
 A stack contains one original commit and its immediately following `fixup!`, `amend!`, or `reword!` commits.
@@ -137,7 +138,7 @@ Current and historical feedback remain available in the result.
 ### Check live review activity
 
 ```sh
-umpire running --json
+git-review running --json
 ```
 
 Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
@@ -150,13 +151,13 @@ Command failures exit with status 1 and emit the standard versioned JSON error o
 ### Collect saved feedback
 
 ```sh
-umpire feedback
-umpire feedback --json
+git-review feedback
+git-review feedback --json
 ```
 
-This read-only command returns notes persisted by Umpire, including reviews completed outside an agent session.
+This read-only command returns notes persisted by git-review, including reviews completed outside an agent session.
 It does not launch tuicr, recover an attempt, or change either review store.
-Interrupted sessions whose notes were not captured by Umpire still require explicit interactive recovery.
+Interrupted sessions whose notes were not captured by git-review still require explicit interactive recovery.
 
 Feedback results use the versioned result envelope, with `"command":"feedback"`.
 The optional `feedback` array contains records with these fields:
@@ -180,28 +181,28 @@ Active attempts remain visible in `active`, but collecting feedback does not res
 ### Review a stack
 
 ```sh
-umpire run
-umpire run HEAD
-umpire run abc123..def456
+git-review run
+git-review run HEAD
+git-review run abc123..def456
 ```
 
-Without an argument, Umpire reviews each eligible, non-deferred stack in oldest-first order, once per invocation.
+Without an argument, git-review reviews each eligible, non-deferred stack in oldest-first order, once per invocation.
 Approval or feedback does not stop this sequence.
 A commit reference selects only its containing stack.
 The displayed `original..tip` form has inclusive endpoints and must identify exactly one complete stack.
 An explicit selection can review an approved stack again or select a later stack without approving earlier stacks.
 
-Umpire launches tuicr directly in a stable, detached worktree checked out at the stack's tip.
+git-review launches tuicr directly in a stable, detached worktree checked out at the stack's tip.
 The tuicr revision expression uses the original's parent through the stack tip, so the original commit is included.
 Tuicr's editor therefore opens the reviewed file version rather than the feature checkout's current version.
 Make fixes in the feature checkout, not the review worktree.
 The review checkout is disposable and is only for exploring the reviewed code, not making fixes.
-Before reuse, Umpire discards tracked edits, untracked files, and ignored artifacts in that checkout.
+Before reuse, git-review discards tracked edits, untracked files, and ignored artifacts in that checkout.
 It does not forcibly remove nested Git repositories.
-Umpire refuses to overwrite unrelated directories or attached branch checkouts at the review path.
-It also refuses to use a worktree held by another Umpire review.
+git-review refuses to overwrite unrelated directories or attached branch checkouts at the review path.
+It also refuses to use a worktree held by another git-review process.
 
-After tuicr exits, Umpire validates its saved review:
+After tuicr exits, git-review validates its saved review:
 
 | Saved result | Status |
 | --- | --- |
@@ -213,18 +214,18 @@ After tuicr exits, Umpire validates its saved review:
 
 Commit-message review marks count toward completion.
 A successful process exit is not proof of approval.
-An untouched review leaves no attempt in Umpire's history and does not require recovery on the next invocation.
+An untouched review leaves no attempt in git-review's history and does not require recovery on the next invocation.
 
 ### Review a range of stacks
 
 ```sh
-umpire run --start abc123
-umpire run --start abc123 --end def456 --json
-umpire run --end def456
+git-review run --start abc123
+git-review run --start abc123 --end def456 --json
+git-review run --end def456
 ```
 
 Each invocation reviews eligible stacks within the inclusive bounds in oldest-first order.
-After approval or feedback, Umpire continues to the next eligible stack.
+After approval or feedback, git-review continues to the next eligible stack.
 Each eligible stack opens at most once per invocation.
 Feedback remains unresolved and requires an explicit recovery or replacement choice on a later invocation.
 An incomplete review, cancellation, a required decision, or an error stops the command.
@@ -245,30 +246,30 @@ The result's view and entries still describe the feature branch, not only the bo
 ### Recover or replace an attempt
 
 An interrupted, incomplete, or feedback attempt on the selected stack requires an explicit choice.
-In an interactive terminal, Umpire prompts to recover, replace, or cancel.
+In an interactive terminal, git-review prompts to recover, replace, or cancel.
 With JSON output or redirected streams, it returns `decision_required` without a prompt.
 
 ```sh
-umpire run --recover
-umpire run --replace
-umpire run --recover --session <session-id>
+git-review run --recover
+git-review run --replace
+git-review run --recover --session <session-id>
 ```
 
 Recovery reopens tuicr at the previous attempt's exact captured range and preserves its attempt ID.
 Tuicr restores saved comments and review marks for that checkout and range.
-Umpire records the result only after tuicr exits.
+git-review records the result only after tuicr exits.
 Replacement starts another attempt and retains the previous attempt in history.
-Neither operation proceeds while the review worktree is held by a live Umpire/tuicr process.
+Neither operation proceeds while the review worktree is held by a live git-review/tuicr process.
 
 `--session` accepts an exact saved session ID, index slug, or indexed `sessions/<id>.json` path.
 It resolves ambiguous saved sessions and is not an arbitrary filesystem path.
-If an interrupted original disappeared and no lineage identifies its replacement, use `umpire run <replacement-commit> --replace`.
+If an interrupted original disappeared and no lineage identifies its replacement, use `git-review run <replacement-commit> --replace`.
 
 ### Record explicit user approval
 
 ```sh
-umpire approve <start_commit>
-umpire approve <start_commit> <end_commit>
+git-review approve <start_commit>
+git-review approve <start_commit> <end_commit>
 ```
 
 Endpoints are inclusive and accept Git commit references such as abbreviated SHAs or `HEAD`.
@@ -289,9 +290,9 @@ Other successful commands produce a versioned JSON object.
 JSON and terminal output consume the same typed result.
 JSON retains full commit IDs, attempts, saved comments, session notes, and optional previous-version lineage.
 Tuicr renders its interactive view through the controlling terminal, with diagnostics on stderr, not the JSON stream.
-Umpire launches tuicr with `--stdout` to bypass clipboard confirmation and discards its Markdown export.
+git-review launches tuicr with `--stdout` to bypass clipboard confirmation and discards its Markdown export.
 Feedback comes from the persisted review session.
-`--json` disables Umpire's recovery prompt, but a new tuicr review still requires an interactive terminal.
+`--json` disables git-review's recovery prompt, but a new tuicr review still requires an interactive terminal.
 
 Successful results other than `status` contain:
 
@@ -338,29 +339,29 @@ After a crashed writer, remove a stale state lock only after confirming that no 
 Each repository uses one persistent, detached review checkout:
 
 ```text
-<git-common-dir>/umpire/worktree
+<git-common-dir>/git-review/worktree
 ```
 
 All feature checkouts and branches sharing that Git common directory use the same review checkout and lock.
-Umpire checks out the selected stack tip so tuicr's editor opens the correct file version.
+git-review checks out the selected stack tip so tuicr's editor opens the correct file version.
 Tuicr associates saved sessions with the checkout path and commit range, not just individual file paths.
-Identical stacks can reuse the same saved session across branches, while Umpire's attempt history remains branch-specific.
+Identical stacks can reuse the same saved session across branches, while git-review's attempt history remains branch-specific.
 No migration from the previous cache-based checkout location is performed.
 
-The adjacent `worktree.umpire.lock` file uses an operating-system lock that releases when its last holder exits.
+The adjacent `worktree.git-review.lock` file uses an operating-system lock that releases when its last holder exits.
 Do not delete this lock file to bypass an active review.
 The checkout remains in place between reviews, so routine reviews do not create disposable worktrees that need garbage collection.
-Other tools must not use or edit this checkout while Umpire holds its lock.
+Other tools must not use or edit this checkout while git-review holds its lock.
 Prepare fixes in the feature checkout or a separate writable workspace, never in the review checkout.
 
-Umpire reads tuicr's platform review store, then checks the other platform's location for existing sessions.
+git-review reads tuicr's platform review store, then checks the other platform's location for existing sessions.
 Supported formats are review index `2.0` and saved session `1.3`.
 It never writes tuicr annotations or rewrites feature-branch history.
 Compatibility with Pi's branch state requires Pi to adopt the `tuicr-reviews` path.
 
 ## Changed stacks and Change-Ids
 
-Umpire records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
+git-review records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
 The hash uses SHA-256 with a `v1:` prefix and includes paths, file modes, whitespace, binary content, and diff context.
 It excludes commit messages, authors, timestamps, and commit identities.
 
@@ -380,9 +381,9 @@ Feedback from obsolete content remains historical context, not a global blocker.
 Changed stack content supersedes a prior result but does not prove that feedback was addressed.
 The next review supplies that check.
 
-When an original commit has a Gerrit `Change-Id` trailer, Umpire uses it to connect stack versions within the same repository and feature branch.
+When an original commit has a Gerrit `Change-Id` trailer, git-review uses it to connect stack versions within the same repository and feature branch.
 It never transfers approval through a Change-Id.
-Umpire rejects malformed or multiple trailers and duplicate Change-Ids on current original commits.
+git-review rejects malformed or multiple trailers and duplicate Change-Ids on current original commits.
 It does not generate Change-Ids or guess lineage for split or combined changes.
 
 ## Development
@@ -403,11 +404,11 @@ mise run functional-tests
 ```
 
 This task requires tuicr on `PATH` and permission to create pseudo-terminals.
-It runs the compiled Umpire binary against real tuicr, using terminal key input and tuicr's public annotation CLI.
-It checks complete reviews, incomplete feedback, and interactive recovery of a saved review after Umpire is killed.
+It runs the compiled git-review binary against real tuicr, using terminal key input and tuicr's public annotation CLI.
+It checks complete reviews, incomplete feedback, and interactive recovery of a saved review after git-review is killed.
 It also selects recover, replace, and cancel through the actual terminal prompt and checks the resulting status through another CLI invocation.
 A terminal emulator reconstructs screen updates instead of matching raw ANSI output.
-The real-tuicr tests skip in the standard suite unless `UMPIRE_REAL_TUICR=1` is set.
+The real-tuicr tests skip in the standard suite unless `GIT_REVIEW_REAL_TUICR=1` is set.
 When enabled, a missing tuicr executable or unavailable pseudo-terminal fails the tests.
 The suite is verified with tuicr v0.27.0.
 

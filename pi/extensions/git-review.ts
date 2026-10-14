@@ -1,15 +1,15 @@
 /**
- * Umpire extension.
+ * git-review extension.
  *
- * Reads `umpire status --needs-review --json` for the current Git feature branch and
- * publishes the counts on `umpire:status`. Outside a Git repository it
+ * Reads `git-review status --needs-review --json` for the current Git feature branch and
+ * publishes the counts on `git-review:status`. Outside a Git repository it
  * publishes nothing.
  *
  * Recap (and anything else) can ask for a fresh post with
- * `umpire:request-status`. The request object may set `refresh(cwd)`.
+ * `git-review:request-status`. The request object may set `refresh(cwd)`.
  *
  * On settle, when feedback exists and no review process is running, the extension tells
- * the model to use the umpire skill. The same count is not sent again
+ * the model to use the git-review skill. The same count is not sent again
  * until it changes, so an unanswered notice does not loop. That notice
  * runs from `mise-hooks:after-on-stop` when mise-hooks is loaded, so it
  * follows the mise on-stop hook. Otherwise it runs on `agent_settled`.
@@ -22,13 +22,13 @@ import {
 	feedbackNotice,
 	MISE_AFTER_ON_STOP_EVENT,
 	MISE_COORDINATES_EVENT,
-	parseUmpireStatus,
-	UMPIRE_READY_EVENT,
-	UMPIRE_REQUEST_STATUS_EVENT,
-	UMPIRE_STATUS_EVENT,
-	type UmpireStatus,
-	type UmpireStatusRequest,
-} from "./umpire/support.ts";
+	parseGitReviewStatus,
+	GIT_REVIEW_READY_EVENT,
+	GIT_REVIEW_REQUEST_STATUS_EVENT,
+	GIT_REVIEW_STATUS_EVENT,
+	type GitReviewStatus,
+	type GitReviewStatusRequest,
+} from "./git-review/support.ts";
 
 const GIT_TIMEOUT_MS = 5_000;
 const STATUS_TIMEOUT_MS = 15_000;
@@ -53,16 +53,16 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	/** Publish status for a repository. Returns undefined when there is nothing to publish. */
-	async function readAndPublish(cwd: string): Promise<UmpireStatus | undefined> {
+	async function readAndPublish(cwd: string): Promise<GitReviewStatus | undefined> {
 		if (!(await isRepository(cwd))) return undefined;
-		const result = await pi.exec("umpire", ["status", "--needs-review", "--json"], {
+		const result = await pi.exec("git-review", ["status", "--needs-review", "--json"], {
 			cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});
 		if (result.killed || result.code !== 0) return undefined;
-		const status = parseUmpireStatus(result.stdout);
+		const status = parseGitReviewStatus(result.stdout);
 		if (!status) return undefined;
-		pi.events.emit(UMPIRE_STATUS_EVENT, {
+		pi.events.emit(GIT_REVIEW_STATUS_EVENT, {
 			needsReview: status.needsReview,
 			total: status.total,
 			feedback: status.feedback,
@@ -86,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (aborted || status.feedback === lastNudgedFeedback) return;
-		const activity = await pi.exec("umpire", ["running", "--json"], {
+		const activity = await pi.exec("git-review", ["running", "--json"], {
 			cwd: ctx.cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});
@@ -131,9 +131,9 @@ export default function (pi: ExtensionAPI) {
 		hooks.push((ctx, aborted) => onStop(ctx, aborted));
 	});
 
-	pi.events.on(UMPIRE_REQUEST_STATUS_EVENT, (data) => {
+	pi.events.on(GIT_REVIEW_REQUEST_STATUS_EVENT, (data) => {
 		if (data === null || typeof data !== "object" || Array.isArray(data)) return;
-		(data as UmpireStatusRequest).refresh = async (cwd: string) => {
+		(data as GitReviewStatusRequest).refresh = async (cwd: string) => {
 			await readAndPublish(cwd);
 		};
 	});
@@ -141,7 +141,7 @@ export default function (pi: ExtensionAPI) {
 	// Announce after the listeners above are registered. Mise may already
 	// be loaded, in which case it answers this event. If mise loads later,
 	// it emits MISE_COORDINATES_EVENT itself.
-	pi.events.emit(UMPIRE_READY_EVENT, undefined);
+	pi.events.emit(GIT_REVIEW_READY_EVENT, undefined);
 
 	pi.on("session_start", async (_event, ctx) => {
 		stopMonitoring();

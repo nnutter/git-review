@@ -1,12 +1,12 @@
 ---
-name: umpire
-description: Retrieve saved Umpire review feedback, address comments, and rewrite Git history into adjacent commit stacks. Use when the user asks to address Umpire feedback, insert fixup commits, or prepare amendments for re-review.
-compatibility: Requires Git and umpire on PATH, a feature branch with a configured upstream, and permission to rewrite local history.
+name: git-review
+description: Retrieve saved git-review feedback, address comments, and rewrite Git history into adjacent commit stacks. Use when the user asks to address git-review feedback, insert fixup commits, or prepare amendments for re-review.
+compatibility: Requires Git and git-review on PATH, a feature branch with a configured upstream, and permission to rewrite local history.
 ---
 
-# Address Umpire feedback
+# Address git-review feedback
 
-Use this skill to address reviews that the user completed through Umpire.
+Use this skill to address reviews that the user completed through git-review.
 This skill does not launch reviews or register harness commands.
 The user controls review and approval.
 
@@ -15,7 +15,7 @@ The user controls review and approval.
 Use this read-only command for current stack details and commit counts:
 
 ```sh
-umpire status --needs-review --json
+git-review status --needs-review --json
 ```
 
 Successful output is a versioned result object with `"version":1` and `"command":"status"`.
@@ -41,7 +41,7 @@ Command failures exit with status `1` and emit the standard versioned JSON error
 
 Read `entries` for unresolved stack details and current commit IDs.
 The summary counts the full feature range even when entries are filtered.
-Use `umpire feedback --json` for saved comments and session notes.
+Use `git-review feedback --json` for saved comments and session notes.
 Counts do not identify feedback targets or authorize approval.
 
 ## Retrieve feedback
@@ -49,7 +49,7 @@ Counts do not identify feedback targets or authorize approval.
 Run this command from the feature checkout:
 
 ```sh
-umpire feedback --json
+git-review feedback --json
 ```
 
 Inspect the JSON result, not only the exit code.
@@ -84,7 +84,7 @@ Do not silently lose selected feedback or address the same attempt twice.
 If `active` contains an attempt, pause before rewriting history.
 Ask the user to finish or resolve the active review.
 This command does not collect uncaptured notes from interrupted tuicr sessions.
-Do not use `umpire run --recover` to retrieve feedback.
+Do not use `git-review run --recover` to retrieve feedback.
 Recovery opens an interactive review and requires the user's choice.
 
 ## Prepare the changes
@@ -94,9 +94,9 @@ Recovery opens an interactive review and requires the user's choice.
 3. Preserve unrelated user changes before changing branches or rewriting history.
 4. Summarize the selected feedback and proposed fixes.
 5. Record the original branch tip and create a uniquely named local backup branch.
-6. Identify each current target stack through Umpire's `view.stacks` data.
+6. Identify each current target stack through git-review's `view.stacks` data.
 
-Use `umpire status --needs-review --json` when you need a fresh view of current stacks.
+Use `git-review status --needs-review --json` when you need a fresh view of current stacks.
 Its `view.stacks` includes approved stacks too.
 Do not derive targets from comment file paths or commit subjects alone.
 Use full commit IDs.
@@ -107,9 +107,9 @@ This keeps older target commit IDs unchanged while you replay later history.
 Refresh the current view when a target no longer matches the captured stack.
 Do not guess lineage for split or combined changes.
 
-Make fixes in the feature checkout, not `<git-common-dir>/umpire/worktree`.
+Make fixes in the feature checkout, not `<git-common-dir>/git-review/worktree`.
 The review checkout is disposable and is only for code exploration.
-Do not edit Umpire's state file or tuicr's saved sessions.
+Do not edit git-review's state file or tuicr's saved sessions.
 
 ## Create native Git feedback commits
 
@@ -186,15 +186,15 @@ Git generates nested feedback subjects when the target is an existing feedback c
 
 1. Check that the checkout uses the feature branch after integration.
 2. Run the repository's required checks on the final history.
-3. Run `umpire status --needs-review --json` to check stack formation.
+3. Run `git-review status --needs-review --json` to check stack formation.
 4. Check that each feedback commit immediately follows its target stack tip.
 5. Report each attempt ID, addressed comment, new stack range, and validation result.
 
-Leave review eligibility and approval decisions to Umpire.
-Do not call `umpire approve`, launch a review, or claim user approval.
+Leave review eligibility and approval decisions to git-review.
+Do not call `git-review approve`, launch a review, or claim user approval.
 Do not change stored state to mark feedback addressed.
 Keep backup branches until the user requests their removal.
 Remove temporary fix branches only after checking their commits are reachable from the feature branch.
 Leave recovery branches intact when integration fails.
 
-Tell the user that the changes are ready for re-review with `umpire run`.
+Tell the user that the changes are ready for re-review with `git-review run`.

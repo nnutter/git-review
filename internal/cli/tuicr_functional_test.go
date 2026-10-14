@@ -16,7 +16,7 @@ import (
 
 func realTuicrEnvironment(t *testing.T) []string {
 	t.Helper()
-	if os.Getenv("UMPIRE_REAL_TUICR") != "1" {
+	if os.Getenv("GIT_REVIEW_REAL_TUICR") != "1" {
 		t.Skip("run mise run functional-tests to exercise real tuicr")
 	}
 	_, err := exec.LookPath("tuicr")
@@ -65,7 +65,7 @@ func realFeatureRepo(t *testing.T) string {
 
 func TestRealTuicrFeedback(t *testing.T) {
 	env := realTuicrEnvironment(t)
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
 	session := startTerminal(t, binary, dir, env, "run", "--json")
 	session.waitFor(t, "feature.txt")
@@ -112,7 +112,7 @@ func TestRealTuicrFeedback(t *testing.T) {
 
 func TestRealTuicrInterruptedRecovery(t *testing.T) {
 	env := realTuicrEnvironment(t)
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
 	session := startTerminal(t, binary, dir, env, "run", "--json")
 	session.waitFor(t, "feature.txt")
@@ -184,7 +184,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 	for _, choice := range []string{"recover", "replace", "cancel"} {
 		t.Run(choice, func(t *testing.T) {
 			env := realTuicrEnvironment(t)
-			binary := buildUmpire(t)
+			binary := buildGitReview(t)
 			dir := realFeatureRepo(t)
 			initial := startTerminal(t, binary, dir, env, "run", "--json")
 			initial.waitFor(t, "feature.txt")
@@ -254,7 +254,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 
 func TestRealTuicrCleanReview(t *testing.T) {
 	env := realTuicrEnvironment(t)
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
 	session := startTerminal(t, binary, dir, env, "run", "HEAD", "--json")
 	session.waitFor(t, "feature.txt")

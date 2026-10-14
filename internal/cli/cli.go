@@ -1,4 +1,4 @@
-// Package cli exposes Umpire's review workflow through Cobra and Fang.
+// Package cli exposes git-review's review workflow through Cobra and Fang.
 package cli
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 // Execute runs a command with explicit process streams and checkout location.
@@ -51,7 +51,7 @@ type application struct {
 }
 
 func (a *application) command() *cobra.Command {
-	root := &cobra.Command{Use: "umpire", Short: "Review feature-branch commit stacks with tuicr", Long: "Umpire tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
+	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
 	feedback := &cobra.Command{Use: "feedback", Short: "Read current and historical saved feedback without launching tuicr", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		result, err := a.service.Feedback(cmd.Context())

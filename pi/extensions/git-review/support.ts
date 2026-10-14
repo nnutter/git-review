@@ -1,32 +1,32 @@
 /**
- * Pure helpers for the umpire extension.
+ * Pure helpers for the git-review extension.
  *
  * No Pi imports: node:test can load this file outside the Pi process.
- * `umpire status --needs-review --json` prints a result with a summary of { state, count }.
+ * `git-review status --needs-review --json` prints a result with a summary of { state, count }.
  * Failures print a versioned object and exit non-zero. Callers check
  * the exit code before parsing.
  */
 
-export const UMPIRE_STATUS_EVENT = "umpire:status";
-export const UMPIRE_REQUEST_STATUS_EVENT = "umpire:request-status";
+export const GIT_REVIEW_STATUS_EVENT = "git-review:status";
+export const GIT_REVIEW_REQUEST_STATUS_EVENT = "git-review:request-status";
 
 /** Mise emits this with a mutable hook list at the end of on-stop. */
 export const MISE_AFTER_ON_STOP_EVENT = "mise-hooks:after-on-stop";
 
-/** Umpire emits this at load. Mise answers with MISE_COORDINATES_EVENT. */
-export const UMPIRE_READY_EVENT = "umpire:ready";
+/** git-review emits this at load. Mise answers with MISE_COORDINATES_EVENT. */
+export const GIT_REVIEW_READY_EVENT = "git-review:ready";
 export const MISE_COORDINATES_EVENT = "mise-hooks:coordinates-on-stop";
 
 const REQUIRED_STATES = ["needs_review", "reviewing", "feedback", "incomplete", "approved"] as const;
 
-export type UmpireStatus = {
+export type GitReviewStatus = {
 	needsReview: number;
 	total: number;
 	feedback: number;
 	line: string;
 };
 
-export type UmpireStatusRequest = {
+export type GitReviewStatusRequest = {
 	refresh?: (cwd: string) => Promise<void>;
 };
 
@@ -35,11 +35,11 @@ export function reviewStatusLine(needsReview: number, total: number): string {
 }
 
 /**
- * Parse successful `umpire status --needs-review --json` stdout.
+ * Parse successful `git-review status --needs-review --json` stdout.
  * Returns undefined for unsupported results, malformed rows, or a missing required state.
  * `total` is the sum of every state in summary, including states this parser does not name.
  */
-export function parseUmpireStatus(stdout: string): UmpireStatus | undefined {
+export function parseGitReviewStatus(stdout: string): GitReviewStatus | undefined {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(stdout);
@@ -79,7 +79,7 @@ export function parseUmpireStatus(stdout: string): UmpireStatus | undefined {
 	};
 }
 
-/** Accept only the status object umpire publishes. */
+/** Accept only the status object git-review publishes. */
 export function reviewLineFromEvent(data: unknown): string | undefined {
 	if (data === null || typeof data !== "object") return undefined;
 	const record = data as { needsReview?: unknown; total?: unknown; line?: unknown; feedback?: unknown };
@@ -95,7 +95,7 @@ export function reviewLineFromEvent(data: unknown): string | undefined {
 
 export function feedbackNotice(count: number): string {
 	if (count === 1) {
-		return "Umpire has 1 commit in the feedback state. Use the umpire skill to address it.";
+		return "git-review has 1 commit in the feedback state. Use the git-review skill to address it.";
 	}
-	return `Umpire has ${count} commits in the feedback state. Use the umpire skill to address them.`;
+	return `git-review has ${count} commits in the feedback state. Use the git-review skill to address them.`;
 }

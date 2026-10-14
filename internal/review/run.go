@@ -192,13 +192,13 @@ func (r Reviewer) launch(ctx context.Context, path string, stack Stack, lock *os
 	cmd.Dir = path
 	cmd.Stdin = r.Input
 	// --stdout bypasses tuicr's clipboard confirmation. The TUI uses /dev/tty;
-	// Umpire reads persisted feedback instead of the exported markdown.
+	// git-review reads persisted feedback instead of the exported markdown.
 	cmd.Stdout = io.Discard
 	cmd.Stderr = r.Terminal
-	// Keep the worktree locked if Umpire dies while tuicr is still running.
+	// Keep the worktree locked if git-review dies while tuicr is still running.
 	cmd.ExtraFiles = []*os.File{lock}
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tuicr interrupted or failed; run umpire run to recover or replace: %w", err)
+		return fmt.Errorf("tuicr interrupted or failed; use git-review run to recover or replace: %w", err)
 	}
 	return nil
 }
@@ -526,7 +526,7 @@ func replacementStack(plan reviewPlan) (Stack, error) {
 			return stack, nil
 		}
 	}
-	return Stack{}, fmt.Errorf("interrupted stack is no longer current; select its replacement with umpire run <commit>")
+	return Stack{}, fmt.Errorf("interrupted stack is no longer current; select its replacement with git-review run <commit>")
 }
 
 func (options ReviewOptions) hasBounds() bool {

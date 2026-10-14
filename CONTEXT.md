@@ -1,6 +1,6 @@
 # Commit Review
 
-Umpire tracks user review of changes on a feature branch.
+git-review tracks user review of changes on a feature branch.
 
 ## Language
 

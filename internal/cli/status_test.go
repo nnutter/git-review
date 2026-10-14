@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Add feature")
 	for _, subject := range []string{"Active", "Feedback", "Partial", "Approved"} {
@@ -138,9 +138,9 @@ func TestStatusWithoutReviewHistory(t *testing.T) {
 }
 
 func TestStatusOutsideGitRepository(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := t.TempDir()
-	const message = "umpire must be used from inside a Git repository"
+	const message = "git-review must be used from inside a Git repository"
 	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
 		t.Run(args[len(args)-1], func(t *testing.T) {
 			out, terminal, err := executeBinary(t, binary, dir, args...)
@@ -156,7 +156,7 @@ func TestStatusOutsideGitRepository(t *testing.T) {
 				require.Equal(t, message, failed.Error)
 			} else {
 				require.Empty(t, out)
-				require.Contains(t, terminal, "Umpire must be used from inside a Git repository.")
+				require.Contains(t, terminal, "Git-Review must be used from inside a Git repository.")
 				require.NotContains(t, terminal, "git symbolic-ref")
 				require.NotContains(t, terminal, "detached HEAD")
 				require.NotContains(t, terminal, "exit status")

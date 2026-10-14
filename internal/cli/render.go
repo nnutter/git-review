@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func render(output io.Writer, result review.Result) error {
@@ -64,7 +64,7 @@ func renderResult(result review.Result) (string, error) {
 	}
 	if result.Decision != nil {
 		fmt.Fprintf(&out, "Attempt: %s\n", safeText(result.Decision.AttemptID))
-		fmt.Fprintln(&out, "Choose umpire run --recover, umpire run --replace, or leave the attempt unchanged.")
+		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
 }

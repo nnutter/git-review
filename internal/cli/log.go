@@ -12,7 +12,7 @@ func (a *application) logCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Show commits after the upstream in oldest-first order",
-		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nOutput uses Git's format and pager, not Umpire's review state.",
+		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nOutput uses Git's format and pager, not git-review's review state.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.json {

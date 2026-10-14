@@ -1,13 +1,13 @@
 {
-  "name": "umpire-pi",
+  "name": "git-review-pi",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Pi integration and agent skill for Umpire commit reviews",
+  "description": "Pi integration and agent skill for git-review commit reviews",
   "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["./pi/extensions/umpire.ts"],
-    "skills": ["./skills/umpire"],
+    "extensions": ["./pi/extensions/git-review.ts"],
+    "skills": ["./skills/git-review"],
     "prompts": [],
     "themes": []
   },

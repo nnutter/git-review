@@ -20,7 +20,7 @@ run = ["go test -race -shuffle=on ./...", "node --test pi/extensions/*.test.ts"]
 
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
-env.UMPIRE_REAL_TUICR = "1"
+env.GIT_REVIEW_REAL_TUICR = "1"
 run = "go test -race -shuffle=on -count=1 ./internal/cli -run 'TestCommandsShareStructuredResults|TestJSONErrorsIncludeArgumentAndGitFailures|TestRealTuicr'"
 
 [tasks.coverage]

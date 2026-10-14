@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	path, err := review.WorktreePath(dir)
 	require.NoError(t, err)
@@ -38,7 +38,7 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 	}))
 	check(dir, false)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	lock, err := os.OpenFile(path+".umpire.lock", os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := os.OpenFile(path+".git-review.lock", os.O_CREATE|os.O_RDWR, 0o600)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, lock.Close()) })
 	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB))

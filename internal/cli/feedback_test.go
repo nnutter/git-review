@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func TestFeedbackReadsPersistedCurrentAndHistoricalNotes(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	repository := review.Repository{Dir: dir}
 	original, err := repository.Snapshot(t.Context())

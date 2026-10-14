@@ -21,12 +21,12 @@ func WorktreePath(repo string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(common, "umpire", "worktree"), nil
+	return filepath.Join(common, "git-review", "worktree"), nil
 }
 
 // reviewRunning probes an existing lock without creating it.
 func reviewRunning(ctx context.Context, path string) (running bool, err error) {
-	file, err := os.OpenFile(path+".umpire.lock", os.O_RDONLY, 0)
+	file, err := os.OpenFile(path+".git-review.lock", os.O_RDONLY, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -50,7 +50,7 @@ func lockWorktree(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(path+".umpire.lock", os.O_CREATE|os.O_RDWR, 0o600)
+	file, err := os.OpenFile(path+".git-review.lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

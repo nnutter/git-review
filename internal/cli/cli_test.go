@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nnutter/umpire/internal/review"
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -46,10 +46,18 @@ func execute(t *testing.T, dir string, args ...string) (string, string, error) {
 }
 
 func TestCommandsShareStructuredResults(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
-	for _, args := range [][]string{{"status", "--needs-review", "--json"}, {"--json", "status", "--needs-review"}} {
-		out, terminal, err := executeBinary(t, binary, dir, args...)
+	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, tc := range []struct {
+		binary string
+		args   []string
+	}{
+		{binary: binary, args: []string{"status", "--needs-review", "--json"}},
+		{binary: binary, args: []string{"--json", "status", "--needs-review"}},
+		{binary: "git", args: []string{"review", "status", "--needs-review", "--json"}},
+	} {
+		out, terminal, err := executeBinary(t, tc.binary, dir, tc.args...)
 		require.NoError(t, err)
 		require.Empty(t, terminal)
 		require.Equal(t, 1, strings.Count(out, "\n"))
@@ -84,7 +92,7 @@ func TestCommandsShareStructuredResults(t *testing.T) {
 }
 
 func TestJSONErrorsIncludeArgumentAndGitFailures(t *testing.T) {
-	binary := buildUmpire(t)
+	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	git(t, dir, "branch", "--unset-upstream")
 	for _, args := range [][]string{
@@ -150,7 +158,7 @@ func TestReviewAliasProducesDecisionWithoutPromptOrStateChanges(t *testing.T) {
 	require.Equal(t, before, after)
 	out, _, err = execute(t, dir, "run")
 	require.NoError(t, err)
-	require.Contains(t, out, "umpire run --recover")
+	require.Contains(t, out, "git-review run --recover")
 }
 
 func TestTerminalRenderingRetainsFeedbackAndRemovesControlSequences(t *testing.T) {
@@ -185,12 +193,12 @@ func TestReviewKeepsTuicrOutputOffJSONStdout(t *testing.T) {
 	require.NotContains(t, out, "exported feedback")
 }
 
-func TestTuicrKeepsWorktreeLockedAfterUmpireDies(t *testing.T) {
+func TestTuicrKeepsWorktreeLockedAfterGitReviewDies(t *testing.T) {
 	dir := featureRepo(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	bin := t.TempDir()
-	binary := filepath.Join(bin, "umpire")
+	binary := filepath.Join(bin, "git-review")
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "../..")
 	buildOut, err := build.CombinedOutput()
 	require.NoError(t, err, "%s", buildOut)
