@@ -78,16 +78,15 @@ func (a *application) command() *cobra.Command {
 		}
 		return a.write(result)
 	}}
-	status := &cobra.Command{Use: "status", Short: "Show commit counts in each review state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		counts, err := a.service.Status(cmd.Context())
+	var onlyNeedsReview bool
+	status := &cobra.Command{Use: "status", Short: "Show all feature stacks and their review states", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		result, err := a.service.Status(cmd.Context(), onlyNeedsReview)
 		if err != nil {
 			return err
 		}
-		if a.json {
-			return writeJSON(a.output, counts)
-		}
-		return renderStatus(a.output, counts)
+		return a.write(result)
 	}}
+	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks only, like needs-review")
 	activity := &cobra.Command{Use: "review-running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
 		if err != nil {

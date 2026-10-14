@@ -24,6 +24,7 @@ type Result struct {
 	Active   []Attempt        `json:"active"`
 	Decision *Decision        `json:"decision,omitzero"`
 	Feedback []FeedbackRecord `json:"feedback,omitempty"`
+	Summary  []StateCount     `json:"summary,omitempty"`
 }
 
 // FeedbackRecord retains captured scope and marks obsolete or addressed notes.
@@ -139,13 +140,22 @@ func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
 	return reviewRunning(ctx, path)
 }
 
-// Status returns ordered commit counts without changing review state.
-func (s Service) Status(ctx context.Context) ([]StateCount, error) {
+// Status returns current stacks and ordered commit counts without changing review state.
+// needsReview omits approved entries but does not filter the summary.
+func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 	view, state, err := s.snapshotState(ctx)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	return countStates(view, state), nil
+	result := makeResult("status", view, state)
+	result.Summary = countStates(view, state)
+	if !needsReview {
+		result.Entries = make([]Entry, 0, len(view.Stacks))
+		for _, stack := range view.Stacks {
+			result.Entries = append(result.Entries, entryFor(state, stack))
+		}
+	}
+	return result, nil
 }
 
 func (s Service) snapshotState(ctx context.Context) (Snapshot, State, error) {

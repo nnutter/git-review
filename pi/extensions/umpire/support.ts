@@ -2,7 +2,7 @@
  * Pure helpers for the umpire extension.
  *
  * No Pi imports: node:test can load this file outside the Pi process.
- * `umpire status --json` prints a top-level array of { state, count }.
+ * `umpire status --json` prints a versioned result with a summary of { state, count }.
  * Failures print a versioned object and exit non-zero. Callers check
  * the exit code before parsing.
  */
@@ -36,8 +36,8 @@ export function reviewStatusLine(needsReview: number, total: number): string {
 
 /**
  * Parse successful `umpire status --json` stdout.
- * Returns undefined for error objects, malformed rows, or a missing required state.
- * `total` is the sum of every state in the array, including states this parser does not name.
+ * Returns undefined for unsupported results, malformed rows, or a missing required state.
+ * `total` is the sum of every state in summary, including states this parser does not name.
  */
 export function parseUmpireStatus(stdout: string): UmpireStatus | undefined {
 	let parsed: unknown;
@@ -46,10 +46,14 @@ export function parseUmpireStatus(stdout: string): UmpireStatus | undefined {
 	} catch {
 		return undefined;
 	}
-	if (!Array.isArray(parsed)) return undefined;
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+	const result = parsed as { version?: unknown; command?: unknown; status?: unknown; summary?: unknown };
+	if (result.version !== 1 || result.command !== "status") return undefined;
+	if (result.status !== "pending" && result.status !== "idle") return undefined;
+	if (!Array.isArray(result.summary)) return undefined;
 
 	const counts = new Map<string, number>();
-	for (const entry of parsed) {
+	for (const entry of result.summary) {
 		if (entry === null || typeof entry !== "object") return undefined;
 		const state = (entry as { state?: unknown }).state;
 		const count = (entry as { count?: unknown }).count;

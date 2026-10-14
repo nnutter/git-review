@@ -79,22 +79,33 @@ Output uses Git's format and pager without reading or changing review state.
 The command does not support `--json` or revision arguments.
 Unlike review commands, it uses the upstream range directly and permits merge commits.
 
-### Count commits by review state
+### Show feature stacks and review state
 
 ```sh
 umpire status
+umpire status --needs-review
 umpire status --json
+umpire status --needs-review --json
 ```
 
-This read-only command counts commits in the current feature range, including attached fixups.
+This read-only command displays all stacks in the current feature range, including approved stacks, in oldest-first order.
+The table uses the same columns and details as `needs-review`, with fixups grouped in inclusive commit ranges.
+Use `--needs-review` for text output identical to `umpire needs-review`.
+
+JSON output uses the same versioned result structure as `needs-review`, with `"command":"status"` and an additional `summary` array.
+By default, `entries` includes all current stacks.
+With `--needs-review`, `entries` omits approved stacks, but `summary` still counts the full feature range.
+The result's `status` remains `pending` while unresolved stacks or active attempts exist, and `idle` otherwise.
+
+The summary counts commits in the current feature range, including attached fixups.
 Each commit inherits its stack's current state.
 Historical attempts and commits removed from the feature range do not contribute to the counts.
 Stacks with changed content need another review and count as `needs_review` until a new attempt records another state.
 Unchanged content can retain approval or pending feedback after commit hashes change.
 
-The command always includes all five states, even when their counts are zero.
-Text and JSON output use this order: `needs_review`, `reviewing`, `feedback`, `incomplete`, `approved`.
-Unlike other commands, successful JSON output is a top-level array, not a versioned result object:
+The `summary` array always includes all five states, even when their counts are zero.
+It uses this order: `needs_review`, `reviewing`, `feedback`, `incomplete`, `approved`.
+For example, the `summary` field can contain:
 
 ```json
 [

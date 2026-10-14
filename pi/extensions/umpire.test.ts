@@ -27,13 +27,13 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 				await activityGate;
 				return activity;
 			}
-			return { code: 0, killed: false, stdout: JSON.stringify([
+			return { code: 0, killed: false, stdout: JSON.stringify({ version: 1, command: "status", status: "pending", summary: [
 				{ state: "needs_review", count: 2 },
 				{ state: "reviewing", count: 1 },
 				{ state: "feedback", count: feedback },
 				{ state: "incomplete", count: 0 },
 				{ state: "approved", count: 0 },
-			]) };
+			] }) };
 		},
 		sendUserMessage: (message: string) => messages.push(message),
 	} as unknown as ExtensionAPI;

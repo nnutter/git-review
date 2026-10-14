@@ -12,15 +12,16 @@ The user controls review and approval.
 
 ## Check review progress
 
-Use this read-only command when you need commit counts rather than individual stacks or saved feedback:
+Use this read-only command for current stack details and commit counts:
 
 ```sh
 umpire status --json
 ```
 
-Successful output is a top-level array, not the versioned result object used by other commands.
-Each element contains a `state` string and a `count` integer.
-The array always includes these states in this order, including zero counts:
+Successful output is a versioned result object with `"version":1` and `"command":"status"`.
+The `entries` array includes all current stacks, including approved stacks.
+The `summary` array contains elements with a `state` string and a `count` integer.
+The summary always includes these states in this order, including zero counts:
 
 1. `needs_review`
 2. `reviewing`
@@ -34,9 +35,9 @@ Historical attempts and removed commits do not contribute to the counts.
 Changed stacks lose prior approval and count as `needs_review` until a new attempt records another state.
 An empty feature range produces all five states with zero counts.
 
-Check the exit code before interpreting the array.
+Check the exit code and output version before interpreting the result.
 Command failures exit with status `1` and emit the standard versioned JSON error object instead.
-Successful `status` output has no `version` field.
+Use `umpire status --needs-review --json` to omit approved entries without filtering the summary.
 
 Use `umpire needs-review --json` for unresolved stack details and current commit IDs.
 Its `entries` omits approved stacks, but its `view.stacks` includes them.
