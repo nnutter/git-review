@@ -22,8 +22,11 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 		name    string
 		flags   []string
 		patches int
+		stat    bool
 	}{
 		{name: "default"},
+		{name: "stat", flags: []string{"--stat"}, stat: true},
+		{name: "stat with patch", flags: []string{"--stat", "-p"}, patches: 2, stat: true},
 		{name: "patch", flags: []string{"-p"}, patches: 2},
 		{name: "whitespace without patch", flags: []string{"-w"}},
 		{name: "patch ignoring whitespace", flags: []string{"-p", "-w"}, patches: 1},
@@ -42,6 +45,12 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 			require.Greater(t, second, first)
 			require.Greater(t, third, second)
 			require.Equal(t, tc.patches, strings.Count(out, "diff --git"))
+			if tc.stat {
+				require.Contains(t, out, "example.txt |")
+				require.Contains(t, out, "1 file changed, 1 insertion(+)")
+			} else {
+				require.NotContains(t, out, "example.txt |")
+			}
 			if tc.patches > 0 {
 				require.Contains(t, out, "+value = 1\n")
 			}

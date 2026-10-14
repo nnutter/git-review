@@ -68,10 +68,12 @@ Configure the intended upstream explicitly with Git.
 umpire log
 umpire log -p
 umpire log -pw
+umpire log --stat
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
 Use `-p` or `--patch` to show patches.
+Use `--stat` to show diff statistics, with or without patches.
 Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.
 Output uses Git's format and pager without reading or changing review state.
 The command does not support `--json` or revision arguments.

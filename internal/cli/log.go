@@ -8,11 +8,11 @@ import (
 )
 
 func (a *application) logCommand() *cobra.Command {
-	var patch, ignoreAllSpace bool
+	var patch, ignoreAllSpace, stat bool
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Show commits after the upstream in oldest-first order",
-		Long:  "Run git log @{u}..HEAD --reverse with optional patches and whitespace filtering.\nOutput uses Git's format and pager, not Umpire's review state.",
+		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nOutput uses Git's format and pager, not Umpire's review state.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.json {
@@ -24,6 +24,9 @@ func (a *application) logCommand() *cobra.Command {
 			}
 			if ignoreAllSpace {
 				args = append(args, "-w")
+			}
+			if stat {
+				args = append(args, "--stat")
 			}
 			git := exec.CommandContext(cmd.Context(), "git", args...)
 			git.Dir = a.service.Repository.Dir
@@ -38,5 +41,6 @@ func (a *application) logCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&patch, "patch", "p", false, "Show the patch for each commit")
 	cmd.Flags().BoolVarP(&ignoreAllSpace, "ignore-all-space", "w", false, "Ignore whitespace changes in patches")
+	cmd.Flags().BoolVar(&stat, "stat", false, "Show diff statistics for each commit")
 	return cmd
 }
