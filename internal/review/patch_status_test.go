@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,6 +14,7 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 	for _, tc := range []struct {
 		name, status, rewrite, want string
 		legacy                      bool
+		v1                          bool
 	}{
 		{name: "approved reword", status: "approved", rewrite: "reword", want: "approved"},
 		{name: "approved rebase", status: "approved", rewrite: "rebase", want: "approved"},
@@ -22,6 +24,7 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 		{name: "active reword", status: "reviewing", rewrite: "reword", want: "needs_review"},
 		{name: "changed content", status: "approved", rewrite: "content", want: "needs_review"},
 		{name: "legacy reword", status: "approved", rewrite: "reword", want: "needs_review", legacy: true},
+		{name: "v1 reword", status: "approved", rewrite: "reword", want: "needs_review", v1: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := testRepo(t)
@@ -37,6 +40,9 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 			attempt := newAttempt(view.Stacks[0], tc.status)
 			if tc.legacy {
 				attempt.Stack.PatchHash = ""
+			}
+			if tc.v1 {
+				attempt.Stack.PatchHash = "v1:" + strings.Repeat("a", 64)
 			}
 			if tc.status == "feedback" {
 				attempt.Review = jsontext.Value(`{"comments":[{"text":"Please fix this"}]}`)
@@ -96,6 +102,59 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 			after, err := os.ReadFile(store.Path)
 			require.NoError(t, err)
 			require.Equal(t, before, after, "status matching must not rewrite captured scopes")
+		})
+	}
+}
+
+// A rebase can change blob identities and hunk offsets without changing the
+// reviewed patch. Python indentation must still distinguish rewritten content.
+func TestApprovalAfterTouchedFileRebase(t *testing.T) {
+	for _, indentChanged := range []bool{false, true} {
+		name := "shifted hunk"
+		if indentChanged {
+			name = "changed Python indentation"
+		}
+		t.Run(name, func(t *testing.T) {
+			r := testRepo(t)
+			file := filepath.Join(r.Dir, "script.py")
+			prefix := strings.Repeat("# unchanged\n", 10)
+			base := prefix + "if True:\n    print('one')\n"
+			require.NoError(t, os.WriteFile(file, []byte(base), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Add script")
+			gitTest(t, r.Dir, "checkout", "main")
+			gitTest(t, r.Dir, "merge", "--ff-only", "feature")
+			gitTest(t, r.Dir, "checkout", "feature")
+			changed := prefix + "if True:\n    print('two')\n"
+			require.NoError(t, os.WriteFile(file, []byte(changed), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Change output")
+			service := Service{Repository: r}
+			approved, err := service.Approve(t.Context(), "HEAD", "")
+			require.NoError(t, err)
+
+			gitTest(t, r.Dir, "checkout", "main")
+			require.NoError(t, os.WriteFile(file, []byte("# header\n"+base), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Add header")
+			gitTest(t, r.Dir, "checkout", "feature")
+			gitTest(t, r.Dir, "rebase", "main")
+			if indentChanged {
+				changed = strings.Replace(changed, "    print", "        print", 1)
+				require.NoError(t, os.WriteFile(file, []byte("# header\n"+changed), 0o600))
+				gitTest(t, r.Dir, "add", ".")
+				gitTest(t, r.Dir, "commit", "--amend", "--no-edit")
+			}
+			result, err := service.Status(t.Context(), true)
+			require.NoError(t, err)
+			require.NotEqual(t, approved.View.Head, result.View.Head)
+			if indentChanged {
+				require.Len(t, result.Entries, 1)
+				require.Equal(t, "needs_review", result.Entries[0].Status)
+			} else {
+				require.Empty(t, result.Entries)
+				require.Equal(t, "idle", result.Status)
+			}
 		})
 	}
 }

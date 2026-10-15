@@ -220,7 +220,25 @@ func (r Repository) patchHash(ctx context.Context, base, tip string) (string, er
 	if patch == "" {
 		return "", nil
 	}
-	return fmt.Sprintf("v1:%x", sha256.Sum256([]byte(patch))), nil
+	// Verbatim patch IDs preserve whitespace and context, but ignore text blob IDs
+	// and hunk line numbers so an unchanged patch can survive relocation.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "patch-id", "--verbatim")
+	cmd.Dir = r.Dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Stdin = strings.NewReader(patch)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git patch-id --verbatim: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) != 2 || !fullSHA.MatchString(fields[0]) {
+		return "", fmt.Errorf("git patch-id --verbatim returned an invalid patch ID")
+	}
+	return "v2:" + fields[0], nil
 }
 
 func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]Stack, error) {
@@ -280,7 +298,7 @@ func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, subject st
 }
 
 var (
-	patchHashPattern = regexp.MustCompile(`^v1:[a-f0-9]{64}$`)
+	patchHashPattern = regexp.MustCompile(`^(?:v1:[a-f0-9]{64}|v2:(?:[a-f0-9]{40}|[a-f0-9]{64}))$`)
 	feedbackSubject  = regexp.MustCompile(`^(?:fixup!|reword!|amend!) (.+)$`)
 	changeIDPattern  = regexp.MustCompile(`^I[0-9a-fA-F]{40}$`)
 )
