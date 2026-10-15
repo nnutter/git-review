@@ -43,6 +43,7 @@ func Execute(ctx context.Context, args []string, dir string, input io.Reader, ou
 
 type application struct {
 	json        bool
+	verbose     bool
 	service     review.Service
 	input       io.Reader
 	output      io.Writer
@@ -79,6 +80,7 @@ func (a *application) command() *cobra.Command {
 		}
 		return a.write(result)
 	}}
+	status.Flags().BoolVarP(&a.verbose, "verbose", "v", false, "Show saved review details before the table")
 	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
 	activity := &cobra.Command{Use: "running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
@@ -149,7 +151,7 @@ func (a *application) write(result review.Result) error {
 	if a.json {
 		return writeJSON(a.output, result)
 	}
-	return render(a.output, result)
+	return render(a.output, result, a.verbose)
 }
 
 type errorResult struct {
