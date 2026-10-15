@@ -67,6 +67,43 @@ func TestApprovalBlocksCurrentFeedbackAndActiveAttempts(t *testing.T) {
 	}
 }
 
+func TestApprovalWithPendingAttemptsOutsideRange(t *testing.T) {
+	for _, status := range []string{"feedback", "reviewing"} {
+		t.Run(status, func(t *testing.T) {
+			r := testRepo(t)
+			for _, subject := range []string{"Before", "First", "Last", "After"} {
+				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", subject)
+			}
+			view, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			store := Store{Path: view.Path}
+			require.NoError(t, store.Update(func(state *State) error {
+				state.Attempts = append(state.Attempts,
+					newAttempt(view.Stacks[0], status),
+					newAttempt(view.Stacks[3], status))
+				return nil
+			}))
+			service := Service{Repository: r}
+			_, err = service.Approve(t.Context(), view.Stacks[1].Key, view.Stacks[2].Tip)
+			if status == "reviewing" {
+				require.ErrorContains(t, err, "active review")
+				state, err := store.Load()
+				require.NoError(t, err)
+				require.Len(t, state.Attempts, 2)
+				return
+			}
+			require.NoError(t, err)
+			result, err := service.Status(t.Context(), false)
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 4)
+			require.Equal(t, "feedback", result.Entries[0].Status)
+			require.Equal(t, "approved", result.Entries[1].Status)
+			require.Equal(t, "approved", result.Entries[2].Status)
+			require.Equal(t, "feedback", result.Entries[3].Status)
+		})
+	}
+}
+
 func TestStateLockAndCorruption(t *testing.T) {
 	r := testRepo(t)
 	gitTest(t, r.Dir, "commit", "--allow-empty", "-m", "One")
