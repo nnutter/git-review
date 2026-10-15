@@ -16,13 +16,13 @@ import (
 	"github.com/nnutter/git-review/internal/review"
 )
 
-func render(output io.Writer, result review.Result) error {
+func render(output io.Writer, result review.Result, verbose bool) error {
 	var text string
 	var err error
 	if result.Command == "feedback" {
 		text, err = renderFeedbackResult(result)
 	} else {
-		text, err = renderResult(result)
+		text, err = renderResult(result, verbose)
 	}
 	if err != nil {
 		return err
@@ -31,8 +31,13 @@ func render(output io.Writer, result review.Result) error {
 	return err
 }
 
-func renderResult(result review.Result) (string, error) {
+func renderResult(result review.Result, verbose bool) (string, error) {
 	var out strings.Builder
+	if result.Command == "status" && verbose {
+		if err := renderDetails(&out, result.Entries); err != nil {
+			return "", err
+		}
+	}
 	if len(result.Entries) > 0 {
 		rows := make([][]string, 0, len(result.Entries))
 		for _, entry := range result.Entries {
@@ -56,8 +61,10 @@ func renderResult(result review.Result) (string, error) {
 	for _, attempt := range result.Active {
 		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
 	}
-	if err := renderDetails(&out, result.Entries); err != nil {
-		return "", err
+	if result.Command != "status" {
+		if err := renderDetails(&out, result.Entries); err != nil {
+			return "", err
+		}
 	}
 	if message := resultMessage(result); message != "" {
 		fmt.Fprintln(&out, message)

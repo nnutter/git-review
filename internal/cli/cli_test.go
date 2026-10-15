@@ -168,7 +168,7 @@ func TestTerminalRenderingRetainsFeedbackAndRemovesControlSequences(t *testing.T
 	attempt := review.Attempt{ID: "feedback", Stack: view.Stacks[0], Status: "feedback", StartedAt: "2026-01-01T00:00:00Z"}
 	attempt.Review = jsontext.Value(`{"id":"saved","version":"1.3","reviewed":1,"files":2,"complete":false,"comments":[{"content":"Revise validation\u001b[31m","location":"line","path":"main.go","stored_line":"12"}],"sessionNotes":"Explain the change"}`)
 	require.NoError(t, (review.Store{Path: view.Path}).Update(func(state *review.State) error { state.Attempts = append(state.Attempts, attempt); return nil }))
-	out, _, err := execute(t, dir, "status", "--needs-review")
+	out, _, err := execute(t, dir, "status", "--needs-review", "--verbose")
 	require.NoError(t, err)
 	require.Contains(t, out, "Feedback")
 	require.Contains(t, out, "main.go:12: Revise validation")

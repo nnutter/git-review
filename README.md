@@ -101,6 +101,9 @@ git-review status --needs-review --json
 
 This read-only command displays all stacks in the current feature range, including approved stacks, in oldest-first order.
 The table shows each stack's status, inclusive commit range, and subject, with fixups grouped together.
+Saved review details are hidden by default.
+Use `-v` or `--verbose` to show those details before the table.
+Active attempts remain visible without `--verbose`, and the flag does not change JSON output.
 Use `--needs-review` to omit approved stacks and show unresolved stacks and active attempts.
 
 JSON output uses the shared versioned result structure, with `"command":"status"` and a `summary` array.

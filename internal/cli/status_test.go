@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,7 +28,7 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 		// An older approval must not override the latest feedback.
 		state.Attempts = append(state.Attempts, review.Attempt{ID: "old", Stack: view.Stacks[2], Status: "approved", StartedAt: "2026-01-01T00:00:00Z"})
 		for i, status := range []string{"reviewing", "feedback", "incomplete", "approved"} {
-			state.Attempts = append(state.Attempts, review.Attempt{ID: status, Stack: view.Stacks[i+1], Status: status, StartedAt: "2026-01-01T00:00:00Z"})
+			state.Attempts = append(state.Attempts, review.Attempt{ID: status, Stack: view.Stacks[i+1], Status: status, StartedAt: "2026-01-01T00:00:00Z", Review: jsontext.Value(`{"reviewed":1,"files":2,"sessionNotes":"Saved review details"}`)})
 		}
 		return nil
 	}))
@@ -61,6 +63,8 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NotContains(t, out, "Feature review:")
 	require.NotContains(t, out, "Target:")
 	require.NotContains(t, out, "State:")
+	require.NotContains(t, out, "Saved review details")
+	require.Contains(t, out, "Active attempt: reviewing")
 	for i, stack := range view.Stacks {
 		require.Contains(t, out, shortStack(stack))
 		require.Contains(t, out, stack.Subject)
@@ -96,6 +100,28 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 5}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
+	for _, flag := range []string{"", "-v", "--verbose"} {
+		args := []string{"status"}
+		if flag != "" {
+			args = append(args, flag)
+		}
+		text, terminal, err := executeBinary(t, binary, dir, args...)
+		require.NoError(t, err)
+		require.Empty(t, terminal)
+		require.Contains(t, text, "Active attempt: reviewing")
+		if flag == "" {
+			require.NotContains(t, text, "Saved review details")
+			require.NotContains(t, text, "Previous version (historical):")
+		} else {
+			require.Contains(t, text, "Previous version (historical): Review approved:")
+			require.Contains(t, text, "Review feedback:")
+			require.Contains(t, text, "Saved review details")
+			require.Less(t, strings.LastIndex(text, "Saved review details"), strings.Index(text, "COMMITS (inclusive)"))
+		}
+		jsonOut, _, err := executeBinary(t, binary, dir, append(args, "--json")...)
+		require.NoError(t, err)
+		require.JSONEq(t, out, jsonOut)
+	}
 	git(t, dir, "reset", "--hard", "main")
 	out, _, err = executeBinary(t, binary, dir, "status", "--json")
 	require.NoError(t, err)
