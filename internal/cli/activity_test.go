@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,17 +37,23 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 		return nil
 	}))
 	check(dir, false)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	lock, err := os.OpenFile(path+".git-review.lock", os.O_CREATE|os.O_RDWR, 0o600)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, lock.Close()) })
-	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB))
-	check(dir, true)
 	other := filepath.Join(t.TempDir(), "checkout")
 	git(t, dir, "worktree", "add", "-b", "other", other, "HEAD")
-	check(other, true)
-	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_UN))
+	called := false
+	reviewer := review.Reviewer{
+		Service: review.Service{Repository: review.Repository{Dir: dir}},
+		Choose: func(context.Context, *review.Decision) (string, error) {
+			called = true
+			check(dir, true)
+			check(other, false)
+			return "cancel", nil
+		},
+	}
+	_, err = reviewer.Review(t.Context(), review.ReviewOptions{})
+	require.NoError(t, err)
+	require.True(t, called)
 	check(dir, false)
+	check(other, false)
 }
 
 func TestReviewRunningOutsideRepository(t *testing.T) {

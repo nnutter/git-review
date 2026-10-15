@@ -47,11 +47,21 @@ func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (result Res
 	if err != nil {
 		return result, err
 	}
+	branch, err := r.Service.Repository.git(ctx, "symbolic-ref", "--quiet", "HEAD")
+	if err != nil {
+		return result, err
+	}
 	lock, err := lockWorktree(path)
 	if err != nil {
 		return result, err
 	}
 	defer func() { err = errors.Join(err, lock.Close()) }()
+	if err := lock.Truncate(0); err != nil {
+		return result, err
+	}
+	if _, err := lock.WriteString(branch); err != nil {
+		return result, err
+	}
 	result, err = r.reviewSequence(ctx, options, path, lock)
 	if err != nil {
 		return result, err

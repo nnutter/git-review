@@ -41,7 +41,7 @@ Remove any manually installed copies of the git-review extension or skill to avo
 
 The extension source lives in [`pi/extensions/git-review/`](pi/extensions/git-review/), with `index.ts` as its entry point and tests in `tests/`.
 It publishes review counts for other extensions and asks the model to use the git-review skill when feedback exists after an agent run.
-It defers model notices while a review process holds the shared worktree lock.
+It defers model notices while a review is active for the current branch.
 Deferred feedback remains eligible for notification after the review ends.
 Activity-query failures suppress notices rather than assume that review ended.
 It runs after the mise on-stop hook when the mise-hooks extension is present.
@@ -155,10 +155,11 @@ git-review running --json
 ```
 
 Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
-The command checks the repository-wide review worktree lock without changing review state or creating files.
+The command reports whether the current branch owns the live review worktree lock without changing review state or creating files.
 A running automatic review holds this lock across all selected stacks.
 A persisted `reviewing` attempt alone does not indicate a running process.
-Linked worktrees share the same activity signal.
+A review on another branch returns `running: false`, including when that branch is in a linked worktree.
+The lock remains repository-wide to prevent concurrent reviews from using the shared review checkout.
 Command failures exit with status 1 and emit the standard versioned JSON error object.
 
 ### Collect saved feedback
