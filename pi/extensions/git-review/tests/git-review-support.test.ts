@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseGitReviewStatus } from "./git-review/support.ts";
+import { parseGitReviewStatus } from "../support.ts";
 
 const summary = [
 	{ state: "needs_review", count: 0 },

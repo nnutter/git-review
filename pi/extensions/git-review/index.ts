@@ -28,7 +28,7 @@ import {
 	GIT_REVIEW_STATUS_EVENT,
 	type GitReviewStatus,
 	type GitReviewStatusRequest,
-} from "./git-review/support.ts";
+} from "./support.ts";
 
 const GIT_TIMEOUT_MS = 5_000;
 const STATUS_TIMEOUT_MS = 15_000;
