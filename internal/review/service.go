@@ -121,14 +121,18 @@ func (s Service) Feedback(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-// ReviewRunning reports whether a process holds the shared review worktree lock.
+// ReviewRunning reports whether the current branch owns the live review lock.
 // It does not create the lock file or infer activity from persisted attempts.
 func (s Service) ReviewRunning(ctx context.Context) (bool, error) {
 	path, err := WorktreePath(s.Repository.Dir)
 	if err != nil {
 		return false, err
 	}
-	return reviewRunning(ctx, path)
+	branch, err := s.Repository.git(ctx, "symbolic-ref", "--quiet", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	return reviewRunning(ctx, path, branch)
 }
 
 // Status returns current stacks and ordered commit counts without changing review state.

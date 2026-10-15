@@ -82,7 +82,7 @@ func (a *application) command() *cobra.Command {
 	}}
 	status.Flags().BoolVarP(&a.verbose, "verbose", "v", false, "Show saved review details before the table")
 	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
-	activity := &cobra.Command{Use: "running", Short: "Check whether a review process holds the shared worktree lock", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	activity := &cobra.Command{Use: "running", Short: "Check whether a review is running for the current branch", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		running, err := a.service.ReviewRunning(cmd.Context())
 		if err != nil {
 			return err

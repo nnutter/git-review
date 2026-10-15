@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,7 +26,7 @@ func WorktreePath(repo string) (string, error) {
 }
 
 // reviewRunning probes an existing lock without creating it.
-func reviewRunning(ctx context.Context, path string) (running bool, err error) {
+func reviewRunning(ctx context.Context, path, branch string) (running bool, err error) {
 	file, err := os.OpenFile(path+".git-review.lock", os.O_RDONLY, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -39,7 +40,15 @@ func reviewRunning(ctx context.Context, path string) (running bool, err error) {
 	}
 	err = syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return true, nil
+		owner, err := io.ReadAll(file)
+		if err != nil {
+			return false, err
+		}
+		// Metadata left after process exit is not evidence of a live review.
+		if err := syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); !errors.Is(err, syscall.EWOULDBLOCK) {
+			return false, err
+		}
+		return string(owner) == branch, nil
 	}
 	return false, err
 }
