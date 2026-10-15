@@ -3,8 +3,8 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import gitReview from "./git-review.ts";
-import { MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT } from "./git-review/support.ts";
+import gitReview from "../index.ts";
+import { MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT } from "../support.ts";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
 	const events = new EventEmitter();

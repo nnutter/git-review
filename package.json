@@ -6,7 +6,7 @@
   "description": "Pi integration and agent skill for git-review commit reviews",
   "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["./pi/extensions/git-review.ts"],
+    "extensions": ["./pi/extensions/git-review/index.ts"],
     "skills": ["./skills/git-review"],
     "prompts": [],
     "themes": []

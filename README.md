@@ -39,7 +39,7 @@ Install the git-review CLI separately and ensure `git-review` is on `PATH`.
 The package does not install the CLI or tuicr.
 Remove any manually installed copies of the git-review extension or skill to avoid loading them twice.
 
-The extension source lives in [`pi/extensions/git-review.ts`](pi/extensions/git-review.ts).
+The extension source lives in [`pi/extensions/git-review/`](pi/extensions/git-review/), with `index.ts` as its entry point and tests in `tests/`.
 It publishes review counts for other extensions and asks the model to use the git-review skill when feedback exists after an agent run.
 It defers model notices while a review process holds the shared worktree lock.
 Deferred feedback remains eligible for notification after the review ends.
