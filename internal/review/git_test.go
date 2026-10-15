@@ -70,6 +70,41 @@ func TestSnapshotGroupsNativeFixupsTargetingStackTip(t *testing.T) {
 	require.Equal(t, commits[0]+".."+commits[len(commits)-1], view.Stacks[0].Key)
 }
 
+func TestSnapshotTreatsOrphanFeedbackAsNormalCommit(t *testing.T) {
+	cases := []struct {
+		name     string
+		subjects []string
+		want     []string
+	}{
+		{"non-adjacent fixup", []string{"One", "Two", "fixup! One"}, []string{"One", "Two", "fixup! One"}},
+		{"non-adjacent amend", []string{"One", "Two", "amend! One"}, []string{"One", "Two", "amend! One"}},
+		{"non-adjacent reword", []string{"One", "Two", "reword! One"}, []string{"One", "Two", "reword! One"}},
+		{"ambiguous subject", []string{"One", "One", "fixup! One"}, []string{"One", "One", "fixup! One"}},
+		{"missing target", []string{"One", "fixup! fixup! One"}, []string{"One", "fixup! fixup! One"}},
+		{"forward reference", []string{"One", "fixup! Two", "Three"}, []string{"One", "fixup! Two", "Three"}},
+		{"non-adjacent nested fixup", []string{"One", "fixup! One", "Two", "fixup! fixup! One"}, []string{"One", "Two", "fixup! fixup! One"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := testRepo(t)
+			for _, s := range tc.subjects {
+				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", s)
+			}
+			view, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			require.Len(t, view.Stacks, len(tc.want))
+			for i, subject := range tc.want {
+				require.Equal(t, subject, view.Stacks[i].Subject)
+				if i == 0 && tc.name == "non-adjacent nested fixup" {
+					require.Len(t, view.Stacks[i].Commits, 2)
+				} else {
+					require.Len(t, view.Stacks[i].Commits, 1)
+				}
+			}
+		})
+	}
+}
+
 func TestSnapshotRejectsUnsafeHistory(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -78,26 +113,6 @@ func TestSnapshotRejectsUnsafeHistory(t *testing.T) {
 	}{
 		{"no upstream", func(t *testing.T, r Repository) { gitTest(t, r.Dir, "branch", "--unset-upstream") }, "requires a configured Git upstream"},
 		{"detached", func(t *testing.T, r Repository) { gitTest(t, r.Dir, "checkout", "--detach") }, "not detached HEAD"},
-		{"non-adjacent fixup", func(t *testing.T, r Repository) {
-			for _, s := range []string{"One", "Two", "fixup! One"} {
-				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", s)
-			}
-		}, "non-adjacent"},
-		{"non-adjacent nested fixup", func(t *testing.T, r Repository) {
-			for _, s := range []string{"One", "fixup! One", "Two", "fixup! fixup! One"} {
-				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", s)
-			}
-		}, "non-adjacent"},
-		{"missing nested target", func(t *testing.T, r Repository) {
-			for _, s := range []string{"One", "fixup! fixup! One"} {
-				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", s)
-			}
-		}, "non-adjacent"},
-		{"ambiguous subject", func(t *testing.T, r Repository) {
-			for _, s := range []string{"One", "One", "fixup! One"} {
-				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", s)
-			}
-		}, "ambiguous"},
 		{"duplicate change id", func(t *testing.T, r Repository) {
 			for i := range 2 {
 				gitTest(t, r.Dir, "commit", "--allow-empty", "-m", fmt.Sprintf("Feature %d\n\nChange-Id: I%s", i, strings.Repeat("b", 40)))

@@ -372,15 +372,19 @@ Compatibility with Pi's branch state requires Pi to adopt the `tuicr-reviews` pa
 ## Changed stacks and Change-Ids
 
 git-review records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
-The hash uses SHA-256 with a `v1:` prefix and includes paths, file modes, whitespace, binary content, and diff context.
-It excludes commit messages, authors, timestamps, and commit identities.
+New hashes use Git's `patch-id --verbatim` with a `v2:` prefix and preserve paths, file modes, whitespace, binary content, and diff context.
+They ignore text blob IDs, hunk line numbers, file ordering, commit messages, authors, timestamps, and commit identities.
+Whitespace remains significant for every file type, including Python indentation.
 
 Within the same repository and branch history, matching non-empty patch hashes preserve approval and pending feedback.
 Rewording, rebasing onto unrelated changes, or squashing attached fixups can therefore preserve review status.
 A changed diff requires another review.
-Matching is conservative: a rebase that changes diff context or a touched file's blob identity can require another review.
+A change outside the diff context can shift a hunk without invalidating approval.
+Matching remains conservative: changes to diff context still require another review.
+Matching patches do not guarantee unchanged behavior when surrounding code changes.
 Empty diffs omit the hash, so unrelated empty commits cannot share approval.
-Older records without a hash still require exact commits and parent matches.
+Older `v1:` hashes remain readable but do not match `v2:` hashes.
+Records with an older hash or no hash still retain their status for exact commits and parent matches, but rewritten stacks require another review.
 
 Stored attempts retain their original commit scope, including feedback locations and saved session identity.
 Active and incomplete attempts do not transfer status through a patch hash.
