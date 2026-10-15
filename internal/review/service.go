@@ -61,7 +61,7 @@ func (s Service) Approve(ctx context.Context, first, last string) (Result, error
 	}
 	store := Store{Path: view.Path}
 	err = store.Update(func(state *State) error {
-		if err := approvalAllowed(view, *state); err != nil {
+		if err := approvalAllowed(selected, *state); err != nil {
 			return err
 		}
 		if err := s.unchanged(ctx, view); err != nil {
@@ -241,11 +241,11 @@ func activeAttempts(state State) []Attempt {
 	return active
 }
 
-func approvalAllowed(view Snapshot, state State) error {
+func approvalAllowed(selected []Stack, state State) error {
 	if len(activeAttempts(state)) > 0 {
 		return fmt.Errorf("recover or replace the active review before approval")
 	}
-	for _, stack := range view.Stacks {
+	for _, stack := range selected {
 		a := state.latest(stack)
 		if a == nil {
 			continue
