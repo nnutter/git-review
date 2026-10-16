@@ -306,7 +306,7 @@ func (r Reviewer) recover(plan reviewPlan, attempt Attempt, selector string) (Re
 	}
 	result := Result{Version: 1, Command: "run", Status: finished.Status, View: plan.view, Entries: []Entry{{Stack: finished.Stack, Status: finished.Status, Attempt: &finished}}, Active: []Attempt{}}
 	if finished.Status == "incomplete" {
-		result.Decision = &Decision{AttemptID: finished.ID, StackKey: finished.Stack.Key, Choices: []string{"recover", "replace", "cancel"}}
+		result.Decision = recoveryDecision(plan, finished)
 	}
 	return result, nil
 }
@@ -377,7 +377,7 @@ func (r Reviewer) reviewStack(ctx context.Context, options ReviewOptions, visite
 	if plan.prior != nil {
 		if options.Choice == "" {
 			result.Status = "decision_required"
-			result.Decision = &Decision{AttemptID: plan.prior.ID, StackKey: plan.prior.Stack.Key, Choices: []string{"recover", "replace", "cancel"}}
+			result.Decision = recoveryDecision(plan, *plan.prior)
 			return result, nil
 		}
 	} else {
@@ -520,6 +520,19 @@ func recordFailure(path, id string, cause error) error {
 		}
 		return fmt.Errorf("review attempt disappeared after launch failure")
 	})
+}
+
+func recoveryDecision(plan reviewPlan, attempt Attempt) *Decision {
+	decision := &Decision{
+		AttemptID: attempt.ID,
+		StackKey:  attempt.Stack.Key,
+		Choices:   []string{"recover", "replace", "cancel"},
+		Attempt:   attempt,
+	}
+	if stack, err := replacementStack(plan); err == nil {
+		decision.Replacement = &stack
+	}
+	return decision
 }
 
 func replacementStack(plan reviewPlan) (Stack, error) {

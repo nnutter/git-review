@@ -204,7 +204,10 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			require.Equal(t, "incomplete", prior.Status)
 			require.Len(t, prior.Entries, 1)
 			prompt := startTerminal(t, binary, dir, env, "run")
-			prompt.waitFor(t, "A previous review attempt exists")
+			prompt.waitFor(t, "Resume a saved review?")
+			prompt.waitFor(t, "Saved commits (inclusive):")
+			prompt.waitFor(t, "Saved progress: 1/2 files reviewed")
+			prompt.waitFor(t, "Replace — create a new attempt (keep prior history)")
 			switch choice {
 			case "recover":
 				prompt.send(t, "kk\r")

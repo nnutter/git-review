@@ -38,6 +38,9 @@ type Decision struct {
 	AttemptID string   `json:"attemptId"`
 	StackKey  string   `json:"stackKey"`
 	Choices   []string `json:"choices"`
+	Attempt   Attempt  `json:"attempt"`
+	// Replacement is the current scope a new attempt would review, if available.
+	Replacement *Stack `json:"replacement,omitzero"`
 }
 
 // StateCount counts current feature commits in one review state.

@@ -138,6 +138,9 @@ func TestInterruptedReviewRecoveryAndReplacement(t *testing.T) {
 			before, err := (Store{Path: view.Path}).Load()
 			require.NoError(t, err)
 			require.Len(t, before.Attempts, 1)
+			require.Equal(t, before.Attempts[0], result.Decision.Attempt)
+			require.NotNil(t, result.Decision.Replacement)
+			require.Equal(t, view.Stacks[0], *result.Decision.Replacement)
 			path, err := WorktreePath(view.Stacks[0].Repo)
 			require.NoError(t, err)
 			scope := view.Stacks[0]
