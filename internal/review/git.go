@@ -15,6 +15,9 @@ import (
 
 // Stack identifies an original commit and its adjacent feedback commits.
 // Field names retain the Pi state format. ChangeID is optional lineage metadata.
+// AmendCount counts attached amend! and reword! commits, whose messages carry
+// reviewable content. Attached fixup! commits carry no message, so patch
+// identity alone decides their review status.
 type Stack struct {
 	Repo      string   `json:"repo"`
 	Commits   []string `json:"commits"`
@@ -24,6 +27,7 @@ type Stack struct {
 	Key       string   `json:"key"`
 	ChangeID  string   `json:"changeId,omitempty"`
 	PatchHash string   `json:"patchHash,omitempty"`
+	AmendCount int      `json:"amendCount,omitzero"`
 }
 
 func (s Stack) validate() error {
@@ -60,6 +64,12 @@ func (s Stack) validateMetadata() error {
 		if !changeIDPattern.MatchString(s.ChangeID) {
 			return fmt.Errorf("invalid stack Change-Id")
 		}
+	}
+	if s.AmendCount < 0 {
+		return fmt.Errorf("invalid stack amend count")
+	}
+	if s.AmendCount > len(s.Commits) {
+		return fmt.Errorf("invalid stack amend count")
 	}
 	return nil
 }
@@ -262,7 +272,7 @@ func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]S
 			return nil, fmt.Errorf("commit %s has an empty subject", sha)
 		}
 		if match := feedbackSubject.FindStringSubmatch(subject); match != nil {
-			if !tryAppendFeedback(stacks, targets, sha, match[1]) {
+			if !tryAppendFeedback(stacks, targets, sha, match[1], match[2]) {
 				id, err := r.changeID(ctx, sha, ids)
 				if err != nil {
 					return nil, err
@@ -282,7 +292,7 @@ func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]S
 	return stacks, nil
 }
 
-func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, subject string) bool {
+func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, kind, subject string) bool {
 	matches := targets[subject]
 	if len(matches) != 1 {
 		return false
@@ -294,11 +304,14 @@ func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, subject st
 	last.Commits = append(last.Commits, sha)
 	last.Tip = sha
 	last.Key = last.Commits[0] + ".." + sha
+	if kind == "amend!" || kind == "reword!" {
+		last.AmendCount++
+	}
 	return true
 }
 
 var (
 	patchHashPattern = regexp.MustCompile(`^(?:v1:[a-f0-9]{64}|v2:(?:[a-f0-9]{40}|[a-f0-9]{64}))$`)
-	feedbackSubject  = regexp.MustCompile(`^(?:fixup!|reword!|amend!) (.+)$`)
+	feedbackSubject  = regexp.MustCompile(`^(fixup!|reword!|amend!) (.+)$`)
 	changeIDPattern  = regexp.MustCompile(`^I[0-9a-fA-F]{40}$`)
 )
