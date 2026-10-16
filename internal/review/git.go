@@ -4,6 +4,7 @@ package review
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -146,6 +147,40 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 	}
 	return view, nil
+}
+
+// reviewBranch identifies the branch whose review lock applies during a replay.
+// Other review commands still require an attached HEAD through branchView.
+func (r Repository) reviewBranch(ctx context.Context) (string, error) {
+	branch, err := r.git(ctx, "symbolic-ref", "--quiet", "HEAD")
+	if err == nil {
+		return branch, nil
+	}
+	if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 1 {
+		return "", err
+	}
+	for _, backend := range []string{"rebase-merge", "rebase-apply"} {
+		path, pathErr := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-path", backend+"/head-name")
+		if pathErr != nil {
+			return "", pathErr
+		}
+		data, readErr := os.ReadFile(path)
+		if errors.Is(readErr, os.ErrNotExist) {
+			continue
+		}
+		if readErr != nil {
+			return "", readErr
+		}
+		branch = strings.TrimSpace(string(data))
+		if !strings.HasPrefix(branch, "refs/heads/") {
+			return "", fmt.Errorf("rebase does not identify a local branch")
+		}
+		if _, err := r.git(ctx, "check-ref-format", branch); err != nil {
+			return "", err
+		}
+		return branch, nil
+	}
+	return "", err
 }
 
 func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
