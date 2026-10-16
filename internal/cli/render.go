@@ -70,10 +70,48 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		fmt.Fprintln(&out, message)
 	}
 	if result.Decision != nil {
-		fmt.Fprintf(&out, "Attempt: %s\n", safeText(result.Decision.AttemptID))
+		fmt.Fprintln(&out, recoveryDescription(result.Decision))
 		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+func recoveryDescription(decision *review.Decision) string {
+	var out strings.Builder
+	attempt := decision.Attempt
+	fmt.Fprintf(&out, "Saved commits (inclusive): %s — %s\n", shortStack(attempt.Stack), safeText(attempt.Stack.Subject))
+	started := safeText(attempt.StartedAt)
+	if started == "" {
+		started = "unavailable"
+	}
+	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, statusLabel(attempt.Status))
+	var saved struct {
+		Reviewed     *int    `json:"reviewed"`
+		Files        *int    `json:"files"`
+		Comments     []any   `json:"comments"`
+		SessionNotes *string `json:"sessionNotes"`
+	}
+	if len(attempt.Review) == 0 || json.Unmarshal(attempt.Review, &saved) != nil || saved.Reviewed == nil || saved.Files == nil {
+		fmt.Fprintln(&out, "Saved progress: unavailable")
+	} else {
+		fmt.Fprintf(&out, "Saved progress: %d/%d files reviewed · Comments: %d", *saved.Reviewed, *saved.Files, len(saved.Comments))
+		if saved.SessionNotes != nil && *saved.SessionNotes != "" {
+			fmt.Fprint(&out, " · session notes saved")
+		}
+		fmt.Fprintln(&out)
+	}
+	if attempt.Error != "" {
+		fmt.Fprintln(&out, "Last error: "+safeText(attempt.Error))
+	}
+	if current := decision.Replacement; current != nil {
+		if current.Base != attempt.Stack.Base || current.Tip != attempt.Stack.Tip {
+			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", shortStack(*current), safeText(current.Subject))
+		}
+	} else {
+		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review run <commit>.")
+	}
+	fmt.Fprint(&out, "Replacement keeps the prior attempt in history. Tuicr may reuse its saved session.")
+	return out.String()
 }
 
 func renderDetails(out *strings.Builder, entries []review.Entry) error {
