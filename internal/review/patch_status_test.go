@@ -10,6 +10,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAppendedFeedbackWithUnchangedPatchRequiresReview(t *testing.T) {
+	for _, tc := range []struct {
+		subject string
+		want    string
+	}{
+		{subject: "amend! Feature", want: "needs_review"},
+		{subject: "reword! Feature", want: "needs_review"},
+		// A fixup! commit carries no message, so patch identity alone decides it.
+		{subject: "fixup! Feature", want: "approved"},
+	} {
+		t.Run(tc.subject, func(t *testing.T) {
+			r := testRepo(t)
+			file := filepath.Join(r.Dir, "file")
+			require.NoError(t, os.WriteFile(file, []byte("one\n"), 0o600))
+			gitTest(t, r.Dir, "add", ".")
+			gitTest(t, r.Dir, "commit", "-m", "Feature")
+			service := Service{Repository: r}
+			_, err := service.Approve(t.Context(), "HEAD", "")
+			require.NoError(t, err)
+			before, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			require.NotEmpty(t, before.Stacks[0].PatchHash)
+			gitTest(t, r.Dir, "commit", "--allow-empty", "-m", tc.subject)
+			after, err := r.Snapshot(t.Context())
+			require.NoError(t, err)
+			require.Len(t, after.Stacks, 1)
+			require.Equal(t, before.Stacks[0].PatchHash, after.Stacks[0].PatchHash)
+			if tc.want == "approved" {
+				require.Equal(t, before.Stacks[0].AmendCount, after.Stacks[0].AmendCount)
+				result, err := service.Status(t.Context(), true)
+				require.NoError(t, err)
+				require.Equal(t, "idle", result.Status)
+				require.Empty(t, result.Entries)
+				return
+			}
+			require.Equal(t, before.Stacks[0].AmendCount+1, after.Stacks[0].AmendCount)
+			result, err := service.Status(t.Context(), true)
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+			require.Equal(t, "needs_review", result.Entries[0].Status)
+			require.Equal(t, "approved", result.Entries[0].Previous.Status)
+		})
+	}
+}
+
 func TestReviewStatusAfterStackRewrite(t *testing.T) {
 	for _, tc := range []struct {
 		name, status, rewrite, want string

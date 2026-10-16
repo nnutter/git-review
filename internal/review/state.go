@@ -223,7 +223,30 @@ func samePatch(a, b Stack) bool {
 	if a.PatchHash == "" {
 		return false
 	}
-	return a.PatchHash == b.PatchHash
+	if a.PatchHash != b.PatchHash {
+		return false
+	}
+	// An appended amend! or reword! commit is a new version even when the
+	// aggregate diff is unchanged (for example an empty commit). An appended
+	// fixup! commit carries no message, so patch identity alone decides it.
+	if appendedAmends(a, b) || appendedAmends(b, a) {
+		return false
+	}
+	return true
+}
+
+func appendedAmends(old, current Stack) bool {
+	if !extendsStack(old, current) {
+		return false
+	}
+	return current.AmendCount > old.AmendCount
+}
+
+func extendsStack(old, current Stack) bool {
+	if len(current.Commits) <= len(old.Commits) {
+		return false
+	}
+	return slices.Equal(old.Commits, current.Commits[:len(old.Commits)])
 }
 
 func sameStack(a, b Stack) bool {
