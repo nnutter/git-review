@@ -15,6 +15,7 @@ import (
 
 	"github.com/nnutter/git-review/internal/cli/commits"
 	"github.com/nnutter/git-review/internal/cli/files"
+	"github.com/nnutter/git-review/internal/cli/status"
 	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
@@ -72,37 +73,10 @@ func (a *application) command() *cobra.Command {
 		}
 		return display.Write(a.output, a.json, result, a.verbose)
 	}}
-	var onlyNeedsReview, isReviewing bool
-	status := &cobra.Command{Use: "status", Short: "Show all feature stacks and their review states", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if isReviewing {
-			reviewing, err := a.service.ReviewRunning(cmd.Context())
-			if err != nil {
-				return err
-			}
-			if a.json {
-				return display.WriteJSON(a.output, struct {
-					Version     int    `json:"version"`
-					Command     string `json:"command"`
-					IsReviewing bool   `json:"is_reviewing"`
-				}{Version: 1, Command: "status", IsReviewing: reviewing})
-			}
-			_, err = fmt.Fprintf(a.output, "Is reviewing: %t\n", reviewing)
-			return err
-		}
-		result, err := a.service.Status(cmd.Context(), onlyNeedsReview)
-		if err != nil {
-			return err
-		}
-		return display.Write(a.output, a.json, result, a.verbose)
-	}}
-	status.Flags().BoolVarP(&a.verbose, "verbose", "v", false, "Show saved review details before the table")
-	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
-	status.Flags().BoolVar(&isReviewing, "is-reviewing", false, "Check whether a review is running for the current branch")
-	status.MarkFlagsMutuallyExclusive("needs-review", "is-reviewing")
-	status.MarkFlagsMutuallyExclusive("verbose", "is-reviewing")
-	root.AddCommand(feedback, approve, status, a.logCommand())
+	root.AddCommand(feedback, approve, a.logCommand())
 	commits.Install(root, a.service, a.input, a.output, a.terminal)
 	files.Install(root, a.service, a.input, a.output, a.terminal)
+	status.Install(root, a.service, a.output)
 	return root
 }
 
