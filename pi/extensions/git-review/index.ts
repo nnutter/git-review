@@ -2,8 +2,10 @@
  * git-review extension.
  *
  * Reads `git-review status --needs-review --json` for the current Git feature branch and
- * publishes the counts on `git-review:status`. Outside a Git repository it
- * publishes nothing.
+ * publishes the `commits` counts on `git-review:status`. Outside a Git repository it
+ * publishes nothing. `files` reviews use `"command":"files"` and are addressed
+ * as new commits, not fixups; they hold the same worktree lock so
+ * `status --is-reviewing` defers notices during either review.
  *
  * Recap (and anything else) can ask for a fresh post with
  * `git-review:request-status`. The request object may set `refresh(cwd)`.

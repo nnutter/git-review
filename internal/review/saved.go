@@ -67,6 +67,22 @@ func (r SavedReader) Read(scope Stack, selector string) (*SavedReview, error) {
 	return nil, nil
 }
 
+// ReadFile returns the saved file review for a repository and diff source.
+// It returns nil only when no matching session exists. Corruption is an error.
+// Diff sources are "pristine" for --all-files and "working_tree" for --file.
+func (r SavedReader) ReadFile(repo, diffSource, selector string) (*SavedReview, string, error) {
+	for _, store := range r.Stores {
+		saved, sessionPath, err := readFileStore(store, repo, diffSource, selector)
+		if err != nil {
+			return nil, "", err
+		}
+		if saved != nil {
+			return saved, sessionPath, nil
+		}
+	}
+	return nil, "", nil
+}
+
 // DefaultSavedReader uses tuicr's platform store, then the other platform path.
 func DefaultSavedReader() (SavedReader, error) {
 	home, err := os.UserHomeDir()

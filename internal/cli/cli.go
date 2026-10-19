@@ -101,8 +101,23 @@ func (a *application) command() *cobra.Command {
 	status.Flags().BoolVar(&isReviewing, "is-reviewing", false, "Check whether a review is running for the current branch")
 	status.MarkFlagsMutuallyExclusive("needs-review", "is-reviewing")
 	status.MarkFlagsMutuallyExclusive("verbose", "is-reviewing")
-	root.AddCommand(feedback, approve, status, a.runCommand(), a.logCommand())
+	root.AddCommand(feedback, approve, status, a.runCommand(), a.filesCommand(), a.logCommand())
 	return root
+}
+
+func (a *application) filesCommand() *cobra.Command {
+	var untracked bool
+	var session string
+	cmd := &cobra.Command{Use: "files [<path>]", Short: "Review working-tree files with tuicr", Long: "Review working-tree files with tuicr. Without a path, review every tracked\nfile with tuicr tui --all-files. With a path, review that file or directory\nwith tuicr tui --file. With --untracked and no path, review untracked files\nin the current directory with tuicr tui --file . Address file feedback as new commits,\nlogically organized, not fixup commits.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		options := review.FilesOptions{Session: session, Untracked: untracked}
+		if len(args) > 0 {
+			options.Path = args[0]
+		}
+		return a.runFiles(cmd.Context(), options)
+	}}
+	cmd.Flags().BoolVar(&untracked, "untracked", false, "Review untracked files in the current directory (defaults path to .)")
+	cmd.Flags().StringVar(&session, "session", "", "Select an exact saved session ID, slug, or indexed session path")
+	return cmd
 }
 
 func (a *application) logCommand() *cobra.Command {
@@ -180,6 +195,19 @@ func (a *application) runCommand() *cobra.Command {
 	return cmd
 }
 
+func (a *application) runFiles(ctx context.Context, options review.FilesOptions) error {
+	reader, err := review.DefaultSavedReader()
+	if err != nil {
+		return err
+	}
+	reviewer := review.FileReviewer{Service: a.service, Reader: reader, Input: a.input, Terminal: a.terminal}
+	result, err := reviewer.Review(ctx, options)
+	if err != nil {
+		return err
+	}
+	return a.writeFiles(result)
+}
+
 func (a *application) runReview(ctx context.Context, options review.ReviewOptions) error {
 	reader, err := review.DefaultSavedReader()
 	if err != nil {
@@ -207,6 +235,13 @@ func (a *application) write(result review.Result) error {
 		return writeJSON(a.output, result)
 	}
 	return render(a.output, result, a.verbose)
+}
+
+func (a *application) writeFiles(result review.FilesResult) error {
+	if a.json {
+		return writeJSON(a.output, result)
+	}
+	return renderFiles(a.output, result)
 }
 
 type errorResult struct {

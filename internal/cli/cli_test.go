@@ -237,6 +237,7 @@ func TestHelpAndVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "approve")
 	require.Contains(t, out, "commits")
+	require.Contains(t, out, "files")
 	require.Contains(t, out, "--json")
 	require.NotContains(t, out, "confirm")
 	require.NotContains(t, out, "challenge")

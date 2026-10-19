@@ -283,6 +283,43 @@ Neither operation proceeds while the review worktree is held by a live git-revie
 It resolves ambiguous saved sessions and is not an arbitrary filesystem path.
 If an interrupted original disappeared and no lineage identifies its replacement, use `git-review commits <replacement-commit> --replace`.
 
+### Review working-tree files
+
+```sh
+git-review files
+git-review files <path>
+git-review files --untracked
+git-review files --untracked --json
+```
+
+Without a path, git-review runs `tuicr tui --all-files` to review every tracked file.
+With a path, it runs `tuicr tui --file <path>` for that file or directory.
+With `--untracked` and no path, it runs `tuicr tui --file .` to include untracked files in the current directory.
+`--untracked` cannot be combined with an explicit path.
+Use `--session` to select an exact saved session when several file reviews match the same repository.
+
+File reviews run in the feature checkout, not the detached review worktree, and do not require a configured upstream.
+They hold the same repository-wide worktree lock as `commits` reviews, so `status --is-reviewing` reports true during either review.
+They do not create git-review attempts and do not affect `status` counts or `feedback` records.
+`approve` applies only to commit stacks, not file reviews.
+
+Successful `files` output uses `"command":"files"` to distinguish it from `"command":"commits"`.
+It contains the reviewed repository, requested path, `allFiles` and `untracked` flags, and the saved file review with comments and session notes.
+Saved sessions are matched to tuicr's canonical file or directory scope, not just the Git repository root.
+File comment paths are relative to the Git repository root, including reviews started from a subdirectory.
+Statuses mirror stack reviews without recovery decisions:
+
+| Saved result | Status |
+| --- | --- |
+| Every file reviewed, without comments or session notes | `approved` |
+| Any comments or session notes, including drafts | `feedback` |
+| No reviewed files, comments, or session notes, including no saved session | `cancelled` (no feedback saved) |
+| Some reviewed files, but incomplete and without notes | `incomplete` |
+
+Address `files` feedback as one or more new commits, logically organized and sized.
+Do not use `fixup!`, `amend!`, or `reword!` commits for file feedback.
+Address `commits` feedback with native Git fixup commits inserted immediately after their target stacks instead.
+
 ### Record explicit user approval
 
 ```sh
@@ -305,6 +342,8 @@ All commands accept `--json`, before or after the subcommand.
 Each command produces one JSON value followed by a newline on stdout.
 Successful `status` output is an ordered array of state counts.
 Other successful commands produce a versioned JSON object.
+`commits` results use `"command":"commits"` with stack entries and attempts.
+`files` results use `"command":"files"` with the file scope and saved file review.
 JSON and terminal output consume the same typed result.
 JSON retains full commit IDs, attempts, saved comments, session notes, and optional previous-version lineage.
 Tuicr renders its interactive view through the controlling terminal, with diagnostics on stderr, not the JSON stream.

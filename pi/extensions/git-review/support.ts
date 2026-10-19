@@ -4,6 +4,8 @@
  * No Pi imports: node:test can load this file outside the Pi process.
  * `git-review status --needs-review --json` prints `commits` stacks with a summary of { state, count }.
  * `git-review status --is-reviewing --json` prints whether a `commits` or `files` review holds the lock.
+ * `git-review commits --json` returns `"command":"commits"` for fixup workflow.
+ * `git-review files --json` returns `"command":"files"` for new-commit workflow.
  * Failures print a versioned object and exit non-zero. Callers check
  * the exit code before parsing.
  */

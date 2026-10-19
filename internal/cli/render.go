@@ -303,3 +303,66 @@ func statusLabel(status string) string {
 		return safeText(status)
 	}
 }
+
+func renderFiles(output io.Writer, result review.FilesResult) error {
+	text, err := renderFilesResult(result)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(colorprofile.NewWriter(output, os.Environ()), text)
+	return err
+}
+
+func renderFilesResult(result review.FilesResult) (string, error) {
+	var out strings.Builder
+	scope := result.Repo
+	if result.AllFiles {
+		fmt.Fprintf(&out, "Files review: all tracked files in %s\n", safeText(scope))
+	} else if result.Path != "" {
+		fmt.Fprintf(&out, "Files review: %s in %s\n", safeText(result.Path), safeText(scope))
+	} else {
+		fmt.Fprintf(&out, "Files review: %s\n", safeText(scope))
+	}
+	if result.Session != "" {
+		fmt.Fprintf(&out, "Session: %s\n", safeText(result.Session))
+	}
+	if result.Review != nil {
+		fmt.Fprintf(&out, "Review %s: %d/%d files reviewed\n", safeText(result.Review.ID), result.Review.Reviewed, result.Review.Files)
+		for _, comment := range result.Review.Comments {
+			content, _ := comment["content"].(string)
+			path, _ := comment["path"].(string)
+			line, _ := comment["stored_line"].(string)
+			location, _ := comment["location"].(string)
+			label := location
+			if path != "" {
+				label = path
+			}
+			if line != "" {
+				label += ":" + line
+			}
+			fmt.Fprintf(&out, "  %s: %s\n", safeText(label), safeText(content))
+		}
+		if hasSessionNotes(result.Review.SessionNotes) {
+			fmt.Fprintln(&out, "  Session notes: "+safeText(*result.Review.SessionNotes))
+		}
+	}
+	if message := filesResultMessage(result); message != "" {
+		fmt.Fprintln(&out, message)
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func filesResultMessage(result review.FilesResult) string {
+	switch result.Status {
+	case "approved":
+		return "Approved. Address any follow-up as new commits."
+	case "feedback":
+		return "Feedback requires new commits, logically organized. Do not use fixup commits."
+	case "incomplete":
+		return "Review is incomplete, not approved."
+	case "cancelled":
+		return "Review cancelled. No file feedback was saved."
+	default:
+		return ""
+	}
+}
