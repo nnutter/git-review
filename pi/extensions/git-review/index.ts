@@ -8,8 +8,9 @@
  * Recap (and anything else) can ask for a fresh post with
  * `git-review:request-status`. The request object may set `refresh(cwd)`.
  *
- * On settle, when feedback exists and no review process is running, the extension tells
- * the model to use the git-review skill. The same count is not sent again
+ * On settle, when `commits` feedback exists and no `commits` or `files` review
+ * is running (`status --is-reviewing`), the extension tells the model to use
+ * the git-review skill. The same count is not sent again
  * until it changes, so an unanswered notice does not loop. That notice
  * runs from `mise-hooks:after-on-stop` when mise-hooks is loaded, so it
  * follows the mise on-stop hook. Otherwise it runs on `agent_settled`.

@@ -87,7 +87,7 @@ Check live activity with `git-review status --is-reviewing --json` before rewrit
 When `is_reviewing` is true, a `commits` or `files` review holds the worktree lock.
 Ask the user to finish the live review instead of rewriting underneath it.
 This command does not collect uncaptured notes from interrupted tuicr sessions.
-Do not use `git-review run --recover` to retrieve feedback.
+Do not use `git-review commits --recover` to retrieve feedback.
 Recovery opens an interactive review and requires the user's choice.
 
 ## Prepare the changes
@@ -200,4 +200,4 @@ Keep backup branches until the user requests their removal.
 Remove temporary fix branches only after checking their commits are reachable from the feature branch.
 Leave recovery branches intact when integration fails.
 
-Tell the user that the changes are ready for re-review with `git-review run`.
+Tell the user that the changes are ready for re-review with `git-review commits`.

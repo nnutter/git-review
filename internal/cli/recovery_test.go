@@ -24,7 +24,7 @@ func TestRecoveryDecisionExplainsSavedWork(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			saved := review.Stack{Base: "base", Tip: "bbbbbbbbbbbb", Commits: []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"}, Subject: "Fix recovery\x1b[31m\nhandling"}
 			current := review.Stack{Base: "base", Tip: "cccccccccccc", Commits: []string{"cccccccccccc"}, Subject: "Revised recovery"}
-			result := review.Result{Command: "run", Status: "decision_required", Decision: &review.Decision{
+			result := review.Result{Command: "commits", Status: "decision_required", Decision: &review.Decision{
 				AttemptID:   "internal-id",
 				Attempt:     review.Attempt{Stack: saved, Status: "incomplete", StartedAt: "2026-10-16T12:00:00Z", Review: tc.saved},
 				Replacement: &current,
@@ -46,7 +46,7 @@ func TestRecoveryDecisionExplainsSavedWork(t *testing.T) {
 				require.NotContains(t, text, "New review commits")
 			}
 			if tc.replacement == "none" {
-				require.Contains(t, text, "No current replacement scope. Select one with git-review run <commit>.")
+				require.Contains(t, text, "No current replacement scope. Select one with git-review commits <commit>.")
 			}
 			require.Contains(t, text, "Replacement keeps the prior attempt in history. Tuicr may reuse its saved session.")
 			require.NotContains(t, text, "internal-id")

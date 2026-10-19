@@ -54,7 +54,7 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 	}
 	if result.Decision != nil {
 		fmt.Fprintln(&out, recoveryDescription(result.Decision))
-		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
+		fmt.Fprintln(&out, "Choose git-review commits --recover, git-review commits --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
 }
@@ -107,7 +107,7 @@ func recoveryDescription(decision *review.Decision) string {
 			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", shortStack(*current), safeText(current.Subject))
 		}
 	} else {
-		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review run <commit>.")
+		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review commits <commit>.")
 	}
 	fmt.Fprint(&out, "Replacement keeps the prior attempt in history. Tuicr may reuse its saved session.")
 	return out.String()

@@ -2,7 +2,8 @@
  * Pure helpers for the git-review extension.
  *
  * No Pi imports: node:test can load this file outside the Pi process.
- * `git-review status --needs-review --json` prints a result with a summary of { state, count }.
+ * `git-review status --needs-review --json` prints `commits` stacks with a summary of { state, count }.
+ * `git-review status --is-reviewing --json` prints whether a `commits` or `files` review holds the lock.
  * Failures print a versioned object and exit non-zero. Callers check
  * the exit code before parsing.
  */

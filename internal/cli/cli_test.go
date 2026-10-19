@@ -98,7 +98,7 @@ func TestJSONErrorsIncludeArgumentAndGitFailures(t *testing.T) {
 	for _, args := range [][]string{
 		{"status", "--needs-review", "--json"},
 		{"approve", "--json"},
-		{"run", "--recover", "--replace", "--json"},
+		{"commits", "--recover", "--replace", "--json"},
 		{"not-a-command", "--json"},
 		{"--json", "status", "--needs-review", "--unknown"},
 	} {
@@ -124,7 +124,7 @@ func TestReviewBoundsReachAutomaticSelection(t *testing.T) {
 		state.Attempts = append(state.Attempts, review.Attempt{ID: "bounded", Stack: view.Stacks[1], Status: "incomplete", StartedAt: "2026-01-01T00:00:00Z"})
 		return nil
 	}))
-	out, terminal, err := execute(t, dir, "run", "--start", "HEAD", "--end", "HEAD", "--json")
+	out, terminal, err := execute(t, dir, "commits", "--start", "HEAD", "--end", "HEAD", "--json")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
 	var result review.Result
@@ -150,7 +150,7 @@ func TestReviewAliasProducesDecisionWithoutPromptOrStateChanges(t *testing.T) {
 	var result review.Result
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, "decision_required", result.Status)
-	require.Equal(t, "run", result.Command)
+	require.Equal(t, "commits", result.Command)
 	require.NotNil(t, result.Decision)
 	require.Equal(t, []string{"recover", "replace", "cancel"}, result.Decision.Choices)
 	after, err := os.ReadFile(view.Path)
@@ -158,7 +158,7 @@ func TestReviewAliasProducesDecisionWithoutPromptOrStateChanges(t *testing.T) {
 	require.Equal(t, before, after)
 	out, _, err = execute(t, dir, "run")
 	require.NoError(t, err)
-	require.Contains(t, out, "git-review run --recover")
+	require.Contains(t, out, "git-review commits --recover")
 }
 
 func TestTerminalRenderingRetainsFeedbackAndRemovesControlSequences(t *testing.T) {
@@ -183,7 +183,7 @@ func TestReviewKeepsTuicrOutputOffJSONStdout(t *testing.T) {
 	bin := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "tuicr"), []byte("#!/bin/sh\nprintf 'tuicr terminal output\\n' >&2\nprintf 'exported feedback\\n'\n"), 0o700))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	out, terminal, err := execute(t, dir, "run", "--json")
+	out, terminal, err := execute(t, dir, "commits", "--json")
 	require.NoError(t, err)
 	require.Equal(t, "tuicr terminal output\n", terminal)
 	var result review.Result
@@ -209,7 +209,7 @@ func TestTuicrKeepsWorktreeLockedAfterGitReviewDies(t *testing.T) {
 	script := "#!/bin/sh\nset -eu\nprintf started > \"$TEST_STARTED\"\nwhile [ ! -f \"$TEST_EXIT\" ]; do sleep 0.05; done\nprintf finished > \"$TEST_STARTED\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "tuicr"), []byte(script), 0o700))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	cmd := exec.CommandContext(t.Context(), binary, "run", "--json")
+	cmd := exec.CommandContext(t.Context(), binary, "commits", "--json")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Start())
 	defer func() {
@@ -225,7 +225,7 @@ func TestTuicrKeepsWorktreeLockedAfterGitReviewDies(t *testing.T) {
 	require.Eventually(t, func() bool { _, err := os.Stat(started); return err == nil }, 5*time.Second, 10*time.Millisecond)
 	require.NoError(t, cmd.Process.Kill())
 	require.Error(t, cmd.Wait())
-	out, _, err := execute(t, dir, "run", "--replace", "--json")
+	out, _, err := execute(t, dir, "commits", "--replace", "--json")
 	require.ErrorContains(t, err, "worktree is in use")
 	var result errorResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
@@ -236,7 +236,7 @@ func TestHelpAndVersion(t *testing.T) {
 	out, _, err := execute(t, t.TempDir(), "--help")
 	require.NoError(t, err)
 	require.Contains(t, out, "approve")
-	require.Contains(t, out, "run")
+	require.Contains(t, out, "commits")
 	require.Contains(t, out, "--json")
 	require.NotContains(t, out, "confirm")
 	require.NotContains(t, out, "challenge")
