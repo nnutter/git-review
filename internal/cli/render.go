@@ -85,12 +85,7 @@ func recoveryDescription(decision *review.Decision) string {
 		started = "unavailable"
 	}
 	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, statusLabel(attempt.Status))
-	var saved struct {
-		Reviewed     *int    `json:"reviewed"`
-		Files        *int    `json:"files"`
-		Comments     []any   `json:"comments"`
-		SessionNotes *string `json:"sessionNotes"`
-	}
+	var saved savedProgress
 	if len(attempt.Review) == 0 || json.Unmarshal(attempt.Review, &saved) != nil || saved.Reviewed == nil || saved.Files == nil {
 		fmt.Fprintln(&out, "Saved progress: unavailable")
 	} else {
@@ -112,6 +107,13 @@ func recoveryDescription(decision *review.Decision) string {
 	}
 	fmt.Fprint(&out, "Replacement keeps the prior attempt in history. Tuicr may reuse its saved session.")
 	return out.String()
+}
+
+type savedProgress struct {
+	Reviewed     *int    `json:"reviewed"`
+	Files        *int    `json:"files"`
+	Comments     []any   `json:"comments"`
+	SessionNotes *string `json:"sessionNotes"`
 }
 
 func renderDetails(out *strings.Builder, entries []review.Entry) error {
