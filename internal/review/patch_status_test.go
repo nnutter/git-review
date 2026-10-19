@@ -137,17 +137,22 @@ func TestReviewStatusAfterStackRewrite(t *testing.T) {
 			}
 			statusResult, err = service.Status(t.Context(), false)
 			require.NoError(t, err)
-			for _, count := range statusResult.Summary {
-				want := 0
-				if count.State == tc.want {
-					want = len(result.View.Stacks[0].Commits)
-				}
-				require.Equal(t, want, count.Count, "state %s", count.State)
-			}
+			assertStateCounts(t, statusResult.Summary, tc.want, len(result.View.Stacks[0].Commits))
 			after, err := os.ReadFile(store.Path)
 			require.NoError(t, err)
 			require.Equal(t, before, after, "status matching must not rewrite captured scopes")
 		})
+	}
+}
+
+func assertStateCounts(t *testing.T, counts []StateCount, status string, commits int) {
+	t.Helper()
+	for _, count := range counts {
+		want := 0
+		if count.State == status {
+			want = commits
+		}
+		require.Equal(t, want, count.Count, "state %s", count.State)
 	}
 }
 

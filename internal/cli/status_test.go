@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
@@ -66,17 +67,17 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NotContains(t, out, "Saved review details")
 	require.Contains(t, out, "Active attempt: reviewing")
 	for i, stack := range view.Stacks {
-		require.Contains(t, out, shortStack(stack))
+		require.Contains(t, out, display.ShortStack(stack))
 		require.Contains(t, out, stack.Subject)
-		require.Contains(t, out, statusLabel(want[i].State))
+		require.Contains(t, out, display.StatusLabel(want[i].State))
 	}
 	filtered, terminal, err := executeBinary(t, binary, dir, "status", "--needs-review")
 	require.NoError(t, err)
 	require.Empty(t, terminal)
 	for _, stack := range view.Stacks[:4] {
-		require.Contains(t, filtered, shortStack(stack))
+		require.Contains(t, filtered, display.ShortStack(stack))
 	}
-	require.NotContains(t, filtered, shortStack(view.Stacks[4]))
+	require.NotContains(t, filtered, display.ShortStack(view.Stacks[4]))
 	filtered, _, err = executeBinary(t, binary, dir, "status", "--needs-review", "--json")
 	require.NoError(t, err)
 	var result review.Result
@@ -100,6 +101,18 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 5}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
+	assertStatusVerbosity(t, binary, dir, out)
+	git(t, dir, "reset", "--hard", "main")
+	out, _, err = executeBinary(t, binary, dir, "status", "--json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, []review.StateCount{{State: "needs_review"}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
+	require.Empty(t, result.Entries)
+	require.Equal(t, "pending", result.Status) // The historical active attempt still needs recovery.
+}
+
+func assertStatusVerbosity(t *testing.T, binary, dir, out string) {
+	t.Helper()
 	for _, flag := range []string{"", "-v", "--verbose"} {
 		args := []string{"status"}
 		if flag != "" {
@@ -122,13 +135,6 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 		require.NoError(t, err)
 		require.JSONEq(t, out, jsonOut)
 	}
-	git(t, dir, "reset", "--hard", "main")
-	out, _, err = executeBinary(t, binary, dir, "status", "--json")
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	require.Equal(t, []review.StateCount{{State: "needs_review"}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
-	require.Empty(t, result.Entries)
-	require.Equal(t, "pending", result.Status) // The historical active attempt still needs recovery.
 }
 
 func TestStatusWithoutReviewHistory(t *testing.T) {
@@ -175,7 +181,7 @@ func TestStatusOutsideGitRepository(t *testing.T) {
 			require.Equal(t, 1, exit.ExitCode())
 			if len(args) == 2 {
 				require.Empty(t, terminal)
-				var failed errorResult
+				var failed display.ErrorResult
 				require.NoError(t, json.Unmarshal([]byte(out), &failed))
 				require.Equal(t, "status", failed.Command)
 				require.Equal(t, "error", failed.Status)
@@ -197,7 +203,7 @@ func TestStatusJSONErrors(t *testing.T) {
 		out, terminal, err := execute(t, dir, args...)
 		require.Error(t, err)
 		require.Empty(t, terminal)
-		var failed errorResult
+		var failed display.ErrorResult
 		require.NoError(t, json.Unmarshal([]byte(out), &failed))
 		require.Equal(t, "status", failed.Command)
 		require.Equal(t, "error", failed.Status)
@@ -206,7 +212,7 @@ func TestStatusJSONErrors(t *testing.T) {
 	out, terminal, err := execute(t, dir, "status", "--json")
 	require.Error(t, err)
 	require.Empty(t, terminal)
-	var failed errorResult
+	var failed display.ErrorResult
 	require.NoError(t, json.Unmarshal([]byte(out), &failed))
 	require.Equal(t, "status", failed.Command)
 	require.Equal(t, "error", failed.Status)

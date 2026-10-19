@@ -67,7 +67,7 @@ func TestRealTuicrFeedback(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "run", "--json")
+	session := startTerminal(t, binary, dir, env, "commits", "--json")
 	session.waitFor(t, "feature.txt")
 	list := runRealCommand(t, "tuicr", dir, env, "review", "list", "--all")
 	var sessions []struct {
@@ -105,7 +105,7 @@ func TestRealTuicrFeedback(t *testing.T) {
 	require.Equal(t, "Handle the empty case", saved.Comments[0].Content)
 	require.Equal(t, "feature.txt", saved.Comments[0].Path)
 	require.Equal(t, "line", saved.Comments[0].Location)
-	listed := runRealCommand(t, binary, dir, env, "status", "--needs-review")
+	listed := runRealCommand(t, binary, dir, env, "status", "--needs-review", "--verbose")
 	require.Contains(t, listed, "Feedback")
 	require.Contains(t, listed, "feature.txt:1: Handle the empty case")
 }
@@ -114,7 +114,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "run", "--json")
+	session := startTerminal(t, binary, dir, env, "commits", "--json")
 	session.waitFor(t, "feature.txt")
 	session.send(t, ":set noreviewed\rr")
 	session.waitFor(t, "1/2")
@@ -143,7 +143,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 		}
 		return !saved[0].Active
 	}, 5*time.Second, 20*time.Millisecond)
-	before := runRealCommand(t, binary, dir, env, "run", "--json")
+	before := runRealCommand(t, binary, dir, env, "commits", "--json")
 	var decision struct {
 		Status   string `json:"status"`
 		Decision struct {
@@ -153,7 +153,7 @@ func TestRealTuicrInterruptedRecovery(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(before), &decision))
 	require.Equal(t, "decision_required", decision.Status)
 	require.NotEmpty(t, decision.Decision.AttemptID)
-	resumed := startTerminal(t, binary, dir, env, "run", "HEAD", "--recover", "--json")
+	resumed := startTerminal(t, binary, dir, env, "commits", "HEAD", "--recover", "--json")
 	resumed.waitFor(t, "feature.txt")
 	resumed.waitFor(t, "1/2")
 	resumed.send(t, ":set noreviewed\rr")
@@ -186,7 +186,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			env := realTuicrEnvironment(t)
 			binary := buildGitReview(t)
 			dir := realFeatureRepo(t)
-			initial := startTerminal(t, binary, dir, env, "run", "--json")
+			initial := startTerminal(t, binary, dir, env, "commits", "--json")
 			initial.waitFor(t, "feature.txt")
 			initial.send(t, ":set noreviewed\rr")
 			initial.waitFor(t, "1/2")
@@ -203,7 +203,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(before), &prior))
 			require.Equal(t, "incomplete", prior.Status)
 			require.Len(t, prior.Entries, 1)
-			prompt := startTerminal(t, binary, dir, env, "run")
+			prompt := startTerminal(t, binary, dir, env, "commits")
 			prompt.waitFor(t, "Resume a saved review?")
 			prompt.waitFor(t, "Saved commits (inclusive):")
 			prompt.waitFor(t, "Saved progress: 1/2 files reviewed")
@@ -228,7 +228,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			out := prompt.waitExit(t)
 			switch choice {
 			case "recover", "replace":
-				require.Contains(t, out, "Approved. Approval applies only to the recorded commits.")
+				require.Contains(t, out, "No reviews pending in the selected range.")
 			case "cancel":
 				require.Contains(t, out, "Review cancelled. The attempt remains unchanged.")
 			}
@@ -259,7 +259,7 @@ func TestRealTuicrCleanReview(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildGitReview(t)
 	dir := realFeatureRepo(t)
-	session := startTerminal(t, binary, dir, env, "run", "HEAD", "--json")
+	session := startTerminal(t, binary, dir, env, "commits", "HEAD", "--json")
 	session.waitFor(t, "feature.txt")
 	session.send(t, ":set noreviewed\r")
 	session.send(t, "rr")

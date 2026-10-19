@@ -2,14 +2,17 @@
  * git-review extension.
  *
  * Reads `git-review status --needs-review --json` for the current Git feature branch and
- * publishes the counts on `git-review:status`. Outside a Git repository it
- * publishes nothing.
+ * publishes the `commits` counts on `git-review:status`. Outside a Git repository it
+ * publishes nothing. `files` reviews use `"command":"files"` and are addressed
+ * as new commits, not fixups; they hold the same worktree lock so
+ * `status --is-reviewing` defers notices during either review.
  *
  * Recap (and anything else) can ask for a fresh post with
  * `git-review:request-status`. The request object may set `refresh(cwd)`.
  *
- * On settle, when feedback exists and no review process is running, the extension tells
- * the model to use the git-review skill. The same count is not sent again
+ * On settle, when `commits` feedback exists and no `commits` or `files` review
+ * is running (`status --is-reviewing`), the extension tells the model to use
+ * the git-review skill. The same count is not sent again
  * until it changes, so an unanswered notice does not loop. That notice
  * runs from `mise-hooks:after-on-stop` when mise-hooks is loaded, so it
  * follows the mise on-stop hook. Otherwise it runs on `agent_settled`.
@@ -23,6 +26,7 @@ import {
 	MISE_AFTER_ON_STOP_EVENT,
 	MISE_COORDINATES_EVENT,
 	parseGitReviewStatus,
+	parseIsReviewing,
 	GIT_REVIEW_READY_EVENT,
 	GIT_REVIEW_REQUEST_STATUS_EVENT,
 	GIT_REVIEW_STATUS_EVENT,
@@ -86,15 +90,13 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (aborted || status.feedback === lastNudgedFeedback) return;
-		const activity = await pi.exec("git-review", ["running", "--json"], {
+		const activity = await pi.exec("git-review", ["status", "--is-reviewing", "--json"], {
 			cwd: ctx.cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});
 		if (activity.killed || activity.code !== 0) return;
-		const parsed: unknown = JSON.parse(activity.stdout);
-		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
-		const { version, running } = parsed as { version?: unknown; running?: unknown };
-		if (version !== 1 || running !== false || epoch !== generation) return;
+		const reviewing = parseIsReviewing(activity.stdout);
+		if (reviewing !== false || epoch !== generation) return;
 		if (idleOnly && (!ctx.isIdle() || !idleNoticesAllowed)) return;
 		lastNudgedFeedback = status.feedback;
 		nudge(ctx, status.feedback);

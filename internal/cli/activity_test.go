@@ -19,12 +19,12 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 	require.NoError(t, err)
 	check := func(cwd string, running bool) {
 		t.Helper()
-		out, terminal, err := executeBinary(t, binary, cwd, "running", "--json")
+		out, terminal, err := executeBinary(t, binary, cwd, "status", "--is-reviewing", "--json")
 		require.NoError(t, err)
 		require.Empty(t, terminal)
-		want := `{"version":1,"running":false}`
+		want := `{"version":1,"command":"status","is_reviewing":false}`
 		if running {
-			want = `{"version":1,"running":true}`
+			want = `{"version":1,"command":"status","is_reviewing":true}`
 		}
 		require.JSONEq(t, want, out)
 	}
@@ -78,15 +78,37 @@ func TestReviewRunningReportsLiveLockNotPersistedAttempt(t *testing.T) {
 	}
 	// A detached checkout without rebase metadata has no branch to check.
 	git(t, dir, "checkout", "--detach")
-	out, terminal, err := executeBinary(t, binary, dir, "running", "--json")
+	out, terminal, err := executeBinary(t, binary, dir, "status", "--is-reviewing", "--json")
 	require.Error(t, err)
 	require.Empty(t, terminal)
 	require.Contains(t, out, `"status":"error"`)
 }
 
 func TestReviewRunningOutsideRepository(t *testing.T) {
-	out, terminal, err := execute(t, t.TempDir(), "running", "--json")
+	out, terminal, err := execute(t, t.TempDir(), "status", "--is-reviewing", "--json")
 	require.Error(t, err)
 	require.Empty(t, terminal)
 	require.Contains(t, out, `"status":"error"`)
+}
+
+func TestStatusIsReviewingTerminalAndConflicts(t *testing.T) {
+	binary := buildGitReview(t)
+	dir := featureRepo(t)
+	out, terminal, err := executeBinary(t, binary, dir, "status", "--is-reviewing")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, "Is reviewing: false")
+	out, terminal, err = executeBinary(t, binary, dir, "status", "--is-reviewing", "--json")
+	require.NoError(t, err)
+	require.Empty(t, terminal)
+	require.Contains(t, out, `"is_reviewing"`)
+	for _, args := range [][]string{
+		{"status", "--is-reviewing", "--needs-review", "--json"},
+		{"status", "--is-reviewing", "--verbose", "--json"},
+	} {
+		out, terminal, err := executeBinary(t, binary, dir, args...)
+		require.Error(t, err)
+		require.Empty(t, terminal)
+		require.Contains(t, out, `"status":"error"`)
+	}
 }

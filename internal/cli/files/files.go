@@ -1,0 +1,60 @@
+// Package files reviews working-tree files with tuicr.
+package files
+
+import (
+	"io"
+
+	"github.com/spf13/cobra"
+
+	"github.com/nnutter/git-review/internal/display"
+	"github.com/nnutter/git-review/internal/review"
+)
+
+// Command houses flag values and positional arguments for the files review.
+type Command struct {
+	Service   review.Service
+	Input     io.Reader
+	Output    io.Writer
+	Terminal  io.Writer
+	Path      string
+	Untracked bool
+	Session   string
+}
+
+// New builds the files sub-command. Callers install it onto the parent
+// with Install.
+func New(svc review.Service, in io.Reader, out, term io.Writer) *cobra.Command {
+	c := &Command{Service: svc, Input: in, Output: out, Terminal: term}
+	cmd := &cobra.Command{Use: "files [<path>]", Short: "Review working-tree files with tuicr", Long: "Review working-tree files with tuicr. Without a path, review every tracked\nfile with tuicr tui --all-files. With a path, review that file or directory\nwith tuicr tui --file. With --untracked and no path, review untracked files\nin the current directory with tuicr tui --file . Address file feedback as new commits,\nlogically organized, not fixup commits.", Args: cobra.MaximumNArgs(1), RunE: c.RunE}
+	cmd.Flags().BoolVar(&c.Untracked, "untracked", false, "Review untracked files in the current directory (defaults path to .)")
+	cmd.Flags().StringVar(&c.Session, "session", "", "Select an exact saved session ID, slug, or indexed session path")
+	return cmd
+}
+
+// Install adds the files sub-command to parent.
+func Install(parent *cobra.Command, svc review.Service, in io.Reader, out, term io.Writer) {
+	parent.AddCommand(New(svc, in, out, term))
+}
+
+// RunE runs the files review workflow.
+func (c *Command) RunE(cmd *cobra.Command, args []string) error {
+	options := review.FilesOptions{Session: c.Session, Untracked: c.Untracked}
+	if len(args) > 0 {
+		options.Path = args[0]
+		c.Path = args[0]
+	}
+	asJSON := false
+	if flag, err := cmd.Root().PersistentFlags().GetBool("json"); err == nil {
+		asJSON = flag
+	}
+	reader, err := review.DefaultSavedReader()
+	if err != nil {
+		return err
+	}
+	reviewer := review.FileReviewer{Service: c.Service, Reader: reader, Input: c.Input, Terminal: c.Terminal}
+	result, err := reviewer.Review(cmd.Context(), options)
+	if err != nil {
+		return err
+	}
+	return display.WriteFiles(c.Output, asJSON, result)
+}

@@ -1,7 +1,7 @@
 ---
 name: git-review
-description: Retrieve saved git-review feedback, address comments, and rewrite Git history into adjacent commit stacks. Use when the user asks to address git-review feedback, insert fixup commits, or prepare amendments for re-review.
-compatibility: Requires Git and git-review on PATH, a feature branch with a configured upstream, and permission to rewrite local history.
+description: Retrieve saved git-review feedback, address comments, and prepare commits for re-review. Use when the user asks to address git-review feedback, insert fixup commits, or create new commits for file reviews.
+compatibility: Requires Git and git-review on PATH, a feature branch with a configured upstream for commit reviews, and permission to change history for fixups.
 ---
 
 # Address git-review feedback
@@ -44,6 +44,19 @@ The summary counts the full feature range even when entries are filtered.
 Use `git-review feedback --json` for saved comments and session notes.
 Counts do not identify feedback targets or authorize approval.
 
+## Distinguish commits and files output
+
+`git-review commits --json` reviews commit stacks and returns `"command":"commits"`.
+Address its feedback with fixup commits inserted immediately after their target stacks.
+
+`git-review files [<path>] --json` reviews working-tree files and returns `"command":"files"`.
+It runs `tuicr tui --all-files` without a path, `tuicr tui --file <path>` with a path, and `tuicr tui --file .` with `--untracked` and no path.
+Address its feedback as one or more new commits, logically organized and sized.
+Do not use `fixup!`, `amend!`, or `reword!` commits for file feedback.
+
+Check the result's `command` before choosing a workflow.
+Do not infer the workflow from file paths or comment text alone.
+
 ## Retrieve feedback
 
 Run this command from the feature checkout:
@@ -83,8 +96,11 @@ Do not silently lose selected feedback or address the same attempt twice.
 
 If `active` contains an attempt, pause before rewriting history.
 Ask the user to finish or resolve the active review.
+Check live activity with `git-review status --is-reviewing --json` before rewriting history.
+When `is_reviewing` is true, a `commits` or `files` review holds the worktree lock.
+Ask the user to finish the live review instead of rewriting underneath it.
 This command does not collect uncaptured notes from interrupted tuicr sessions.
-Do not use `git-review run --recover` to retrieve feedback.
+Do not use `git-review commits --recover` to retrieve feedback.
 Recovery opens an interactive review and requires the user's choice.
 
 ## Prepare the changes
@@ -182,6 +198,16 @@ Do not use `fixup`, `squash`, or `reword` todo actions to consume these commits 
 Git reword fixups normally have an `amend!` subject.
 Git generates nested feedback subjects when the target is an existing feedback commit.
 
+## Create new commits for file feedback
+
+File reviews do not use stacks, fixups, or history rewrites.
+Make fixes in the feature checkout on the feature branch.
+Create one or more new commits with normal messages, logically organized and sized.
+Do not use `--fixup`, `--fixup=amend:`, or `--fixup=reword:` for file feedback.
+Do not rebase or reorder existing commits to insert file fixes.
+Test the final history with the repository's required checks.
+Record the new commit IDs for the report.
+
 ## Check and report
 
 1. Check that the checkout uses the feature branch after integration.
@@ -197,4 +223,4 @@ Keep backup branches until the user requests their removal.
 Remove temporary fix branches only after checking their commits are reachable from the feature branch.
 Leave recovery branches intact when integration fails.
 
-Tell the user that the changes are ready for re-review with `git-review run`.
+Tell the user that the changes are ready for re-review with `git-review commits` for stack feedback or `git-review files` for file feedback.

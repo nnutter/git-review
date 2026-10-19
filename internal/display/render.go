@@ -1,4 +1,4 @@
-package cli
+package display
 
 import (
 	"encoding/json/v2"
@@ -16,13 +16,13 @@ import (
 	"github.com/nnutter/git-review/internal/review"
 )
 
-func render(output io.Writer, result review.Result, verbose bool) error {
+func Render(output io.Writer, result review.Result, verbose bool) error {
 	var text string
 	var err error
 	if result.Command == "feedback" {
 		text, err = renderFeedbackResult(result)
 	} else {
-		text, err = renderResult(result, verbose)
+		text, err = RenderResult(result, verbose)
 	}
 	if err != nil {
 		return err
@@ -31,35 +31,18 @@ func render(output io.Writer, result review.Result, verbose bool) error {
 	return err
 }
 
-func renderResult(result review.Result, verbose bool) (string, error) {
+func RenderResult(result review.Result, verbose bool) (string, error) {
 	var out strings.Builder
-	if result.Command == "status" && verbose {
+	if showStatusDetails(result, verbose) {
 		if err := renderDetails(&out, result.Entries); err != nil {
 			return "", err
 		}
 	}
 	if len(result.Entries) > 0 {
-		rows := make([][]string, 0, len(result.Entries))
-		for _, entry := range result.Entries {
-			label := statusLabel(entry.Status)
-			if entry.Previous != nil {
-				if entry.Status == "needs_review" {
-					label += " (changed)"
-				}
-			}
-			rows = append(rows, []string{label, shortStack(entry.Stack), safeText(entry.Stack.Subject)})
-		}
-		t := table.New().Headers("STATUS", "COMMITS (inclusive)", "SUBJECT").Rows(rows...).Border(lipgloss.RoundedBorder()).StyleFunc(func(row, _ int) lipgloss.Style {
-			style := lipgloss.NewStyle().Padding(0, 1)
-			if row == table.HeaderRow {
-				return style.Bold(true).Foreground(lipgloss.Color("12"))
-			}
-			return style
-		})
-		fmt.Fprintln(&out, t.Render())
+		fmt.Fprintln(&out, renderStackTable(result.Entries))
 	}
 	for _, attempt := range result.Active {
-		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
+		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), ShortStack(attempt.Stack))
 	}
 	if result.Command != "status" {
 		if err := renderDetails(&out, result.Entries); err != nil {
@@ -70,32 +53,48 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		fmt.Fprintln(&out, message)
 	}
 	if result.Decision != nil {
-		fmt.Fprintln(&out, recoveryDescription(result.Decision))
-		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
+		fmt.Fprintln(&out, RecoveryDescription(result.Decision))
+		fmt.Fprintln(&out, "Choose git-review commits --recover, git-review commits --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
 }
 
-func recoveryDescription(decision *review.Decision) string {
+func renderStackTable(entries []review.Entry) string {
+	rows := make([][]string, 0, len(entries))
+	for _, entry := range entries {
+		label := StatusLabel(entry.Status)
+		if entry.Previous != nil {
+			if entry.Status == "needs_review" {
+				label += " (changed)"
+			}
+		}
+		rows = append(rows, []string{label, ShortStack(entry.Stack), safeText(entry.Stack.Subject)})
+	}
+	t := table.New().Headers("STATUS", "COMMITS (inclusive)", "SUBJECT").Rows(rows...).Border(lipgloss.RoundedBorder()).StyleFunc(func(row, _ int) lipgloss.Style {
+		style := lipgloss.NewStyle().Padding(0, 1)
+		if row == table.HeaderRow {
+			return style.Bold(true).Foreground(lipgloss.Color("12"))
+		}
+		return style
+	})
+	return t.Render()
+}
+
+func RecoveryDescription(decision *review.Decision) string {
 	var out strings.Builder
 	attempt := decision.Attempt
-	fmt.Fprintf(&out, "Saved commits (inclusive): %s — %s\n", shortStack(attempt.Stack), safeText(attempt.Stack.Subject))
+	fmt.Fprintf(&out, "Saved commits (inclusive): %s — %s\n", ShortStack(attempt.Stack), safeText(attempt.Stack.Subject))
 	started := safeText(attempt.StartedAt)
 	if started == "" {
 		started = "unavailable"
 	}
-	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, statusLabel(attempt.Status))
-	var saved struct {
-		Reviewed     *int    `json:"reviewed"`
-		Files        *int    `json:"files"`
-		Comments     []any   `json:"comments"`
-		SessionNotes *string `json:"sessionNotes"`
-	}
-	if len(attempt.Review) == 0 || json.Unmarshal(attempt.Review, &saved) != nil || saved.Reviewed == nil || saved.Files == nil {
+	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, StatusLabel(attempt.Status))
+	var saved savedProgress
+	if !savedProgressAvailable(attempt.Review, &saved) {
 		fmt.Fprintln(&out, "Saved progress: unavailable")
 	} else {
 		fmt.Fprintf(&out, "Saved progress: %d/%d files reviewed · Comments: %d", *saved.Reviewed, *saved.Files, len(saved.Comments))
-		if saved.SessionNotes != nil && *saved.SessionNotes != "" {
+		if hasSessionNotes(saved.SessionNotes) {
 			fmt.Fprint(&out, " · session notes saved")
 		}
 		fmt.Fprintln(&out)
@@ -104,14 +103,55 @@ func recoveryDescription(decision *review.Decision) string {
 		fmt.Fprintln(&out, "Last error: "+safeText(attempt.Error))
 	}
 	if current := decision.Replacement; current != nil {
-		if current.Base != attempt.Stack.Base || current.Tip != attempt.Stack.Tip {
-			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", shortStack(*current), safeText(current.Subject))
+		if scopeChanged(*current, attempt.Stack) {
+			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", ShortStack(*current), safeText(current.Subject))
 		}
 	} else {
-		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review run <commit>.")
+		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review commits <commit>.")
 	}
 	fmt.Fprint(&out, "Replacement keeps the prior attempt in history. Tuicr may reuse its saved session.")
 	return out.String()
+}
+
+type savedProgress struct {
+	Reviewed     *int    `json:"reviewed"`
+	Files        *int    `json:"files"`
+	Comments     []any   `json:"comments"`
+	SessionNotes *string `json:"sessionNotes"`
+}
+
+func savedProgressAvailable(data []byte, saved *savedProgress) bool {
+	if len(data) == 0 {
+		return false
+	}
+	if err := json.Unmarshal(data, saved); err != nil {
+		return false
+	}
+	if saved.Reviewed == nil {
+		return false
+	}
+	return saved.Files != nil
+}
+
+func showStatusDetails(result review.Result, verbose bool) bool {
+	if !verbose {
+		return false
+	}
+	return result.Command == "status"
+}
+
+func hasSessionNotes(notes *string) bool {
+	if notes == nil {
+		return false
+	}
+	return *notes != ""
+}
+
+func scopeChanged(current, captured review.Stack) bool {
+	if current.Base != captured.Base {
+		return true
+	}
+	return current.Tip != captured.Tip
 }
 
 func renderDetails(out *strings.Builder, entries []review.Entry) error {
@@ -136,7 +176,7 @@ func renderFeedbackResult(result review.Result) (string, error) {
 	fmt.Fprintln(&out, "Target: "+safeText(result.View.Target))
 	fmt.Fprintln(&out, "State: "+safeText(result.View.Path))
 	for _, attempt := range result.Active {
-		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
+		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), ShortStack(attempt.Stack))
 	}
 	if err := renderFeedback(&out, result.Feedback); err != nil {
 		return "", err
@@ -155,7 +195,7 @@ func renderFeedback(out *strings.Builder, records []review.FeedbackRecord) error
 		if record.Historical {
 			label = "Historical feedback"
 		}
-		fmt.Fprintf(out, "%s: %s  %s  %s\n", label, safeText(record.Attempt.ID), shortStack(record.Attempt.Stack), safeText(record.Attempt.Stack.Subject))
+		fmt.Fprintf(out, "%s: %s  %s  %s\n", label, safeText(record.Attempt.ID), ShortStack(record.Attempt.Stack), safeText(record.Attempt.Stack.Subject))
 		if record.Attempt.Response != "" {
 			fmt.Fprintln(out, "  Response: "+safeText(record.Attempt.Response))
 		}
@@ -232,7 +272,7 @@ func safeText(value string) string {
 	}, ansi.Strip(value))
 }
 
-func shortStack(stack review.Stack) string {
+func ShortStack(stack review.Stack) string {
 	first := stack.Commits[0]
 	if len(first) > 8 {
 		first = first[:8]
@@ -247,7 +287,7 @@ func shortStack(stack review.Stack) string {
 	return first
 }
 
-func statusLabel(status string) string {
+func StatusLabel(status string) string {
 	switch status {
 	case "needs_review":
 		return "Needs review"
@@ -261,5 +301,68 @@ func statusLabel(status string) string {
 		return "Incomplete"
 	default:
 		return safeText(status)
+	}
+}
+
+func RenderFiles(output io.Writer, result review.FilesResult) error {
+	text, err := renderFilesResult(result)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(colorprofile.NewWriter(output, os.Environ()), text)
+	return err
+}
+
+func renderFilesResult(result review.FilesResult) (string, error) {
+	var out strings.Builder
+	scope := result.Repo
+	if result.AllFiles {
+		fmt.Fprintf(&out, "Files review: all tracked files in %s\n", safeText(scope))
+	} else if result.Path != "" {
+		fmt.Fprintf(&out, "Files review: %s in %s\n", safeText(result.Path), safeText(scope))
+	} else {
+		fmt.Fprintf(&out, "Files review: %s\n", safeText(scope))
+	}
+	if result.Session != "" {
+		fmt.Fprintf(&out, "Session: %s\n", safeText(result.Session))
+	}
+	if result.Review != nil {
+		fmt.Fprintf(&out, "Review %s: %d/%d files reviewed\n", safeText(result.Review.ID), result.Review.Reviewed, result.Review.Files)
+		for _, comment := range result.Review.Comments {
+			content, _ := comment["content"].(string)
+			path, _ := comment["path"].(string)
+			line, _ := comment["stored_line"].(string)
+			location, _ := comment["location"].(string)
+			label := location
+			if path != "" {
+				label = path
+			}
+			if line != "" {
+				label += ":" + line
+			}
+			fmt.Fprintf(&out, "  %s: %s\n", safeText(label), safeText(content))
+		}
+		if hasSessionNotes(result.Review.SessionNotes) {
+			fmt.Fprintln(&out, "  Session notes: "+safeText(*result.Review.SessionNotes))
+		}
+	}
+	if message := filesResultMessage(result); message != "" {
+		fmt.Fprintln(&out, message)
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func filesResultMessage(result review.FilesResult) string {
+	switch result.Status {
+	case "approved":
+		return "Approved. Address any follow-up as new commits."
+	case "feedback":
+		return "Feedback requires new commits, logically organized. Do not use fixup commits."
+	case "incomplete":
+		return "Review is incomplete, not approved."
+	case "cancelled":
+		return "Review cancelled. No file feedback was saved."
+	default:
+		return ""
 	}
 }
