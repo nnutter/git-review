@@ -72,17 +72,18 @@ func TestSnapshotGroupsNativeFixupsTargetingStackTip(t *testing.T) {
 
 func TestSnapshotTreatsOrphanFeedbackAsNormalCommit(t *testing.T) {
 	cases := []struct {
-		name     string
-		subjects []string
-		want     []string
+		name         string
+		subjects     []string
+		want         []string
+		firstCommits int
 	}{
-		{"non-adjacent fixup", []string{"One", "Two", "fixup! One"}, []string{"One", "Two", "fixup! One"}},
-		{"non-adjacent amend", []string{"One", "Two", "amend! One"}, []string{"One", "Two", "amend! One"}},
-		{"non-adjacent reword", []string{"One", "Two", "reword! One"}, []string{"One", "Two", "reword! One"}},
-		{"ambiguous subject", []string{"One", "One", "fixup! One"}, []string{"One", "One", "fixup! One"}},
-		{"missing target", []string{"One", "fixup! fixup! One"}, []string{"One", "fixup! fixup! One"}},
-		{"forward reference", []string{"One", "fixup! Two", "Three"}, []string{"One", "fixup! Two", "Three"}},
-		{"non-adjacent nested fixup", []string{"One", "fixup! One", "Two", "fixup! fixup! One"}, []string{"One", "Two", "fixup! fixup! One"}},
+		{"non-adjacent fixup", []string{"One", "Two", "fixup! One"}, []string{"One", "Two", "fixup! One"}, 1},
+		{"non-adjacent amend", []string{"One", "Two", "amend! One"}, []string{"One", "Two", "amend! One"}, 1},
+		{"non-adjacent reword", []string{"One", "Two", "reword! One"}, []string{"One", "Two", "reword! One"}, 1},
+		{"ambiguous subject", []string{"One", "One", "fixup! One"}, []string{"One", "One", "fixup! One"}, 1},
+		{"missing target", []string{"One", "fixup! fixup! One"}, []string{"One", "fixup! fixup! One"}, 1},
+		{"forward reference", []string{"One", "fixup! Two", "Three"}, []string{"One", "fixup! Two", "Three"}, 1},
+		{"non-adjacent nested fixup", []string{"One", "fixup! One", "Two", "fixup! fixup! One"}, []string{"One", "Two", "fixup! fixup! One"}, 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,11 +96,11 @@ func TestSnapshotTreatsOrphanFeedbackAsNormalCommit(t *testing.T) {
 			require.Len(t, view.Stacks, len(tc.want))
 			for i, subject := range tc.want {
 				require.Equal(t, subject, view.Stacks[i].Subject)
-				if i == 0 && tc.name == "non-adjacent nested fixup" {
-					require.Len(t, view.Stacks[i].Commits, 2)
-				} else {
-					require.Len(t, view.Stacks[i].Commits, 1)
+				count := 1
+				if i == 0 {
+					count = tc.firstCommits
 				}
+				require.Len(t, view.Stacks[i].Commits, count)
 			}
 		})
 	}
