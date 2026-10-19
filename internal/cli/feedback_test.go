@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
@@ -123,7 +124,7 @@ func TestFeedbackDoesNotLaunchOrRecoverReviews(t *testing.T) {
 	out, terminal, err := execute(t, dir, "feedback", "--json")
 	require.ErrorContains(t, err, "invalid stored review no-notes")
 	require.Empty(t, terminal)
-	var failed errorResult
+	var failed display.ErrorResult
 	require.NoError(t, json.Unmarshal([]byte(out), &failed))
 	require.Equal(t, "feedback", failed.Command)
 	require.Equal(t, "error", failed.Status)

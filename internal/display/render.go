@@ -1,4 +1,4 @@
-package cli
+package display
 
 import (
 	"encoding/json/v2"
@@ -16,13 +16,13 @@ import (
 	"github.com/nnutter/git-review/internal/review"
 )
 
-func render(output io.Writer, result review.Result, verbose bool) error {
+func Render(output io.Writer, result review.Result, verbose bool) error {
 	var text string
 	var err error
 	if result.Command == "feedback" {
 		text, err = renderFeedbackResult(result)
 	} else {
-		text, err = renderResult(result, verbose)
+		text, err = RenderResult(result, verbose)
 	}
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func render(output io.Writer, result review.Result, verbose bool) error {
 	return err
 }
 
-func renderResult(result review.Result, verbose bool) (string, error) {
+func RenderResult(result review.Result, verbose bool) (string, error) {
 	var out strings.Builder
 	if showStatusDetails(result, verbose) {
 		if err := renderDetails(&out, result.Entries); err != nil {
@@ -42,7 +42,7 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		fmt.Fprintln(&out, renderStackTable(result.Entries))
 	}
 	for _, attempt := range result.Active {
-		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
+		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), ShortStack(attempt.Stack))
 	}
 	if result.Command != "status" {
 		if err := renderDetails(&out, result.Entries); err != nil {
@@ -53,7 +53,7 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		fmt.Fprintln(&out, message)
 	}
 	if result.Decision != nil {
-		fmt.Fprintln(&out, recoveryDescription(result.Decision))
+		fmt.Fprintln(&out, RecoveryDescription(result.Decision))
 		fmt.Fprintln(&out, "Choose git-review commits --recover, git-review commits --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
@@ -62,13 +62,13 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 func renderStackTable(entries []review.Entry) string {
 	rows := make([][]string, 0, len(entries))
 	for _, entry := range entries {
-		label := statusLabel(entry.Status)
+		label := StatusLabel(entry.Status)
 		if entry.Previous != nil {
 			if entry.Status == "needs_review" {
 				label += " (changed)"
 			}
 		}
-		rows = append(rows, []string{label, shortStack(entry.Stack), safeText(entry.Stack.Subject)})
+		rows = append(rows, []string{label, ShortStack(entry.Stack), safeText(entry.Stack.Subject)})
 	}
 	t := table.New().Headers("STATUS", "COMMITS (inclusive)", "SUBJECT").Rows(rows...).Border(lipgloss.RoundedBorder()).StyleFunc(func(row, _ int) lipgloss.Style {
 		style := lipgloss.NewStyle().Padding(0, 1)
@@ -80,15 +80,15 @@ func renderStackTable(entries []review.Entry) string {
 	return t.Render()
 }
 
-func recoveryDescription(decision *review.Decision) string {
+func RecoveryDescription(decision *review.Decision) string {
 	var out strings.Builder
 	attempt := decision.Attempt
-	fmt.Fprintf(&out, "Saved commits (inclusive): %s — %s\n", shortStack(attempt.Stack), safeText(attempt.Stack.Subject))
+	fmt.Fprintf(&out, "Saved commits (inclusive): %s — %s\n", ShortStack(attempt.Stack), safeText(attempt.Stack.Subject))
 	started := safeText(attempt.StartedAt)
 	if started == "" {
 		started = "unavailable"
 	}
-	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, statusLabel(attempt.Status))
+	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, StatusLabel(attempt.Status))
 	var saved savedProgress
 	if !savedProgressAvailable(attempt.Review, &saved) {
 		fmt.Fprintln(&out, "Saved progress: unavailable")
@@ -104,7 +104,7 @@ func recoveryDescription(decision *review.Decision) string {
 	}
 	if current := decision.Replacement; current != nil {
 		if scopeChanged(*current, attempt.Stack) {
-			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", shortStack(*current), safeText(current.Subject))
+			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", ShortStack(*current), safeText(current.Subject))
 		}
 	} else {
 		fmt.Fprintln(&out, "No current replacement scope. Select one with git-review commits <commit>.")
@@ -176,7 +176,7 @@ func renderFeedbackResult(result review.Result) (string, error) {
 	fmt.Fprintln(&out, "Target: "+safeText(result.View.Target))
 	fmt.Fprintln(&out, "State: "+safeText(result.View.Path))
 	for _, attempt := range result.Active {
-		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
+		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), ShortStack(attempt.Stack))
 	}
 	if err := renderFeedback(&out, result.Feedback); err != nil {
 		return "", err
@@ -195,7 +195,7 @@ func renderFeedback(out *strings.Builder, records []review.FeedbackRecord) error
 		if record.Historical {
 			label = "Historical feedback"
 		}
-		fmt.Fprintf(out, "%s: %s  %s  %s\n", label, safeText(record.Attempt.ID), shortStack(record.Attempt.Stack), safeText(record.Attempt.Stack.Subject))
+		fmt.Fprintf(out, "%s: %s  %s  %s\n", label, safeText(record.Attempt.ID), ShortStack(record.Attempt.Stack), safeText(record.Attempt.Stack.Subject))
 		if record.Attempt.Response != "" {
 			fmt.Fprintln(out, "  Response: "+safeText(record.Attempt.Response))
 		}
@@ -272,7 +272,7 @@ func safeText(value string) string {
 	}, ansi.Strip(value))
 }
 
-func shortStack(stack review.Stack) string {
+func ShortStack(stack review.Stack) string {
 	first := stack.Commits[0]
 	if len(first) > 8 {
 		first = first[:8]
@@ -287,7 +287,7 @@ func shortStack(stack review.Stack) string {
 	return first
 }
 
-func statusLabel(status string) string {
+func StatusLabel(status string) string {
 	switch status {
 	case "needs_review":
 		return "Needs review"
@@ -304,7 +304,7 @@ func statusLabel(status string) string {
 	}
 }
 
-func renderFiles(output io.Writer, result review.FilesResult) error {
+func RenderFiles(output io.Writer, result review.FilesResult) error {
 	text, err := renderFilesResult(result)
 	if err != nil {
 		return err

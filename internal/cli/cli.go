@@ -3,25 +3,24 @@ package cli
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
 // Execute runs a command with explicit process streams and checkout location.
 func Execute(ctx context.Context, args []string, dir string, input io.Reader, output, terminal io.Writer, version string) error {
-	app := application{json: wantsJSON(args), service: review.Service{Repository: review.Repository{Dir: dir}}, input: input, output: output, terminal: terminal}
+	app := application{json: display.WantsJSON(args), service: review.Service{Repository: review.Repository{Dir: dir}}, input: input, output: output, terminal: terminal}
 	root := app.command()
 	root.SetArgs(args)
 	root.SetIn(input)
@@ -33,7 +32,7 @@ func Execute(ctx context.Context, args []string, dir string, input io.Reader, ou
 			if failed == nil {
 				failed = root
 			}
-			app.outputError = writeJSON(output, errorResult{Version: 1, Command: failed.Name(), Status: "error", Error: err.Error()})
+			app.outputError = display.WriteJSON(output, display.ErrorResult{Version: 1, Command: failed.Name(), Status: "error", Error: err.Error()})
 			return
 		}
 		fang.DefaultErrorHandler(w, styles, err)
@@ -80,7 +79,7 @@ func (a *application) command() *cobra.Command {
 				return err
 			}
 			if a.json {
-				return writeJSON(a.output, struct {
+				return display.WriteJSON(a.output, struct {
 					Version     int    `json:"version"`
 					Command     string `json:"command"`
 					IsReviewing bool   `json:"is_reviewing"`
@@ -231,23 +230,16 @@ func (a *application) runReview(ctx context.Context, options review.ReviewOption
 
 func (a *application) write(result review.Result) error {
 	if a.json {
-		return writeJSON(a.output, result)
+		return display.WriteJSON(a.output, result)
 	}
-	return render(a.output, result, a.verbose)
+	return display.Render(a.output, result, a.verbose)
 }
 
 func (a *application) writeFiles(result review.FilesResult) error {
 	if a.json {
-		return writeJSON(a.output, result)
+		return display.WriteJSON(a.output, result)
 	}
-	return renderFiles(a.output, result)
-}
-
-type errorResult struct {
-	Version int    `json:"version"`
-	Command string `json:"command"`
-	Status  string `json:"status"`
-	Error   string `json:"error"`
+	return display.RenderFiles(a.output, result)
 }
 
 func wantsPatch(patch, difft, hunk bool) bool {
@@ -258,30 +250,4 @@ func wantsPatch(patch, difft, hunk bool) bool {
 		return true
 	}
 	return hunk
-}
-
-// Determine error output even if Cobra fails before it parses persistent flags.
-func wantsJSON(args []string) bool {
-	enabled := false
-	for _, arg := range args {
-		if arg == "--" {
-			break
-		}
-		switch arg {
-		case "--json", "--json=true":
-			enabled = true
-		case "--json=false":
-			enabled = false
-		}
-	}
-	return enabled
-}
-
-func writeJSON(output io.Writer, value any) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(output, strings.TrimSpace(string(data)))
-	return err
 }

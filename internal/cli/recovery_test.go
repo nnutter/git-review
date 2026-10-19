@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
@@ -35,7 +36,7 @@ func TestRecoveryDecisionExplainsSavedWork(t *testing.T) {
 			case "none":
 				result.Decision.Replacement = nil
 			}
-			text, err := renderResult(result, false)
+			text, err := display.RenderResult(result, false)
 			require.NoError(t, err)
 			require.Contains(t, text, "Saved commits (inclusive): aaaaaaaa..bbbbbbbb — Fix recovery handling")
 			require.Contains(t, text, "Started: 2026-10-16T12:00:00Z · Status: Incomplete")

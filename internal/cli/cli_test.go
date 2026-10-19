@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
@@ -108,7 +109,7 @@ func TestJSONErrorsIncludeArgumentAndGitFailures(t *testing.T) {
 		require.Equal(t, 1, exit.ExitCode())
 		require.Empty(t, terminal)
 		require.Equal(t, 1, strings.Count(out, "\n"))
-		var result errorResult
+		var result display.ErrorResult
 		require.NoError(t, json.Unmarshal([]byte(out), &result))
 		require.Equal(t, "error", result.Status)
 		require.NotEmpty(t, result.Error)
@@ -227,7 +228,7 @@ func TestTuicrKeepsWorktreeLockedAfterGitReviewDies(t *testing.T) {
 	require.Error(t, cmd.Wait())
 	out, _, err := execute(t, dir, "commits", "--replace", "--json")
 	require.ErrorContains(t, err, "worktree is in use")
-	var result errorResult
+	var result display.ErrorResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, "error", result.Status)
 }

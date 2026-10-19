@@ -9,6 +9,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/term"
 
+	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
 
@@ -29,7 +30,7 @@ func promptChoice(ctx context.Context, input io.Reader, output io.Writer, decisi
 		return "", fmt.Errorf("missing recovery decision")
 	}
 	choice := "cancel"
-	selectField := huh.NewSelect[string]().Title("Resume a saved review?").Description(recoveryDescription(decision)).Options(
+	selectField := huh.NewSelect[string]().Title("Resume a saved review?").Description(display.RecoveryDescription(decision)).Options(
 		huh.NewOption("Recover — reopen tuicr with saved progress and comments", "recover"),
 		huh.NewOption("Replace — create a new attempt (keep prior history)", "replace"),
 		huh.NewOption("Cancel — keep the saved review unchanged", "cancel"),
