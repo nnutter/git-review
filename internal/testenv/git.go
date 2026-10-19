@@ -23,6 +23,10 @@ func Run(m *testing.M) {
 func isolateGit() error {
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
+		// This is a test-suite opt-in, not a Git repository setting.
+		if key == "GIT_REVIEW_REAL_TUICR" {
+			continue
+		}
 		if strings.HasPrefix(key, "GIT_") {
 			if err := os.Unsetenv(key); err != nil {
 				return err

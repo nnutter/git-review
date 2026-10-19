@@ -105,7 +105,7 @@ func TestRealTuicrFeedback(t *testing.T) {
 	require.Equal(t, "Handle the empty case", saved.Comments[0].Content)
 	require.Equal(t, "feature.txt", saved.Comments[0].Path)
 	require.Equal(t, "line", saved.Comments[0].Location)
-	listed := runRealCommand(t, binary, dir, env, "status", "--needs-review")
+	listed := runRealCommand(t, binary, dir, env, "status", "--needs-review", "--verbose")
 	require.Contains(t, listed, "Feedback")
 	require.Contains(t, listed, "feature.txt:1: Handle the empty case")
 }
@@ -228,7 +228,7 @@ func TestRealTuicrRecoveryPrompt(t *testing.T) {
 			out := prompt.waitExit(t)
 			switch choice {
 			case "recover", "replace":
-				require.Contains(t, out, "Approved. Approval applies only to the recorded commits.")
+				require.Contains(t, out, "No reviews pending in the selected range.")
 			case "cancel":
 				require.Contains(t, out, "Review cancelled. The attempt remains unchanged.")
 			}
