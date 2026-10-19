@@ -10,10 +10,10 @@ import (
 	"os/exec"
 	"syscall"
 
-	"charm.land/huh/v2"
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
+	"github.com/nnutter/git-review/internal/cli/commits"
 	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
@@ -99,7 +99,8 @@ func (a *application) command() *cobra.Command {
 	status.Flags().BoolVar(&isReviewing, "is-reviewing", false, "Check whether a review is running for the current branch")
 	status.MarkFlagsMutuallyExclusive("needs-review", "is-reviewing")
 	status.MarkFlagsMutuallyExclusive("verbose", "is-reviewing")
-	root.AddCommand(feedback, approve, status, a.runCommand(), a.filesCommand(), a.logCommand())
+	root.AddCommand(feedback, approve, status, a.filesCommand(), a.logCommand())
+	commits.Install(root, a.service, a.input, a.output, a.terminal)
 	return root
 }
 
@@ -168,31 +169,6 @@ func (a *application) logCommand() *cobra.Command {
 	return cmd
 }
 
-func (a *application) runCommand() *cobra.Command {
-	var recoverReview, replaceReview bool
-	var session, start, end string
-	cmd := &cobra.Command{Use: "commits [<commit_stack>]", Aliases: []string{"run", "challenge"}, Short: "Review eligible stacks, or select one stack", Long: "Run tuicr in a stable detached worktree. Without a stack argument, review each\neligible stack in oldest-first order. A commit reference selects one stack. After\napproval or feedback, continue through the selected stacks. With --start or --end,\nlimit selection to the bounded range. Each eligible stack opens once per\ninvocation. Incomplete reviews, cancellation, required decisions, and errors stop\nthe command. Existing interrupted or feedback attempts require an explicit\nrecovery or replacement choice.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		options := review.ReviewOptions{Session: session, Start: start, End: end}
-		if len(args) > 0 {
-			options.Stack = args[0]
-		}
-		if recoverReview {
-			options.Choice = "recover"
-		}
-		if replaceReview {
-			options.Choice = "replace"
-		}
-		return a.runReview(cmd.Context(), options)
-	}}
-	cmd.Flags().StringVar(&start, "start", "", "Review from the stack containing this commit (inclusive)")
-	cmd.Flags().StringVar(&end, "end", "", "Review through the stack containing this commit (inclusive)")
-	cmd.Flags().BoolVar(&recoverReview, "recover", false, "Reopen the captured attempt in tuicr, preserving saved progress")
-	cmd.Flags().BoolVar(&replaceReview, "replace", false, "Launch a new attempt, retaining previous review history")
-	cmd.Flags().StringVar(&session, "session", "", "Select an exact saved session ID, slug, or indexed session path")
-	cmd.MarkFlagsMutuallyExclusive("recover", "replace")
-	return cmd
-}
-
 func (a *application) runFiles(ctx context.Context, options review.FilesOptions) error {
 	reader, err := review.DefaultSavedReader()
 	if err != nil {
@@ -204,28 +180,6 @@ func (a *application) runFiles(ctx context.Context, options review.FilesOptions)
 		return err
 	}
 	return display.WriteFiles(a.output, a.json, result)
-}
-
-func (a *application) runReview(ctx context.Context, options review.ReviewOptions) error {
-	reader, err := review.DefaultSavedReader()
-	if err != nil {
-		return err
-	}
-	runner := review.Reviewer{Service: a.service, Reader: reader, Input: a.input, Terminal: a.terminal}
-	if !a.json && canPrompt(a.input, a.terminal) {
-		runner.Choose = func(ctx context.Context, decision *review.Decision) (string, error) {
-			choice, err := promptChoice(ctx, a.input, a.terminal, decision)
-			if errors.Is(err, huh.ErrUserAborted) {
-				return "cancel", nil
-			}
-			return choice, err
-		}
-	}
-	result, err := runner.Review(ctx, options)
-	if err != nil {
-		return err
-	}
-	return display.Write(a.output, a.json, result, a.verbose)
 }
 
 func wantsPatch(patch, difft, hunk bool) bool {
