@@ -123,7 +123,7 @@ func (a *application) logCommand() *cobra.Command {
 			if difft {
 				args = append(args, "--ext-diff")
 			}
-			if patch || difft || hunk {
+			if wantsPatch(patch, difft, hunk) {
 				args = append(args, "-p")
 			}
 			if ignoreAllSpace {
@@ -236,6 +236,16 @@ func promptChoice(ctx context.Context, input io.Reader, output io.Writer, decisi
 	).Value(&choice)
 	err := huh.NewForm(huh.NewGroup(selectField)).WithInput(input).WithOutput(output).RunWithContext(ctx)
 	return choice, err
+}
+
+func wantsPatch(patch, difft, hunk bool) bool {
+	if patch {
+		return true
+	}
+	if difft {
+		return true
+	}
+	return hunk
 }
 
 // Determine error output even if Cobra fails before it parses persistent flags.

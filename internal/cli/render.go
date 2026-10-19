@@ -33,7 +33,7 @@ func render(output io.Writer, result review.Result, verbose bool) error {
 
 func renderResult(result review.Result, verbose bool) (string, error) {
 	var out strings.Builder
-	if result.Command == "status" && verbose {
+	if showStatusDetails(result, verbose) {
 		if err := renderDetails(&out, result.Entries); err != nil {
 			return "", err
 		}
@@ -86,11 +86,11 @@ func recoveryDescription(decision *review.Decision) string {
 	}
 	fmt.Fprintf(&out, "Started: %s · Status: %s\n", started, statusLabel(attempt.Status))
 	var saved savedProgress
-	if len(attempt.Review) == 0 || json.Unmarshal(attempt.Review, &saved) != nil || saved.Reviewed == nil || saved.Files == nil {
+	if !savedProgressAvailable(attempt.Review, &saved) {
 		fmt.Fprintln(&out, "Saved progress: unavailable")
 	} else {
 		fmt.Fprintf(&out, "Saved progress: %d/%d files reviewed · Comments: %d", *saved.Reviewed, *saved.Files, len(saved.Comments))
-		if saved.SessionNotes != nil && *saved.SessionNotes != "" {
+		if hasSessionNotes(saved.SessionNotes) {
 			fmt.Fprint(&out, " · session notes saved")
 		}
 		fmt.Fprintln(&out)
@@ -99,7 +99,7 @@ func recoveryDescription(decision *review.Decision) string {
 		fmt.Fprintln(&out, "Last error: "+safeText(attempt.Error))
 	}
 	if current := decision.Replacement; current != nil {
-		if current.Base != attempt.Stack.Base || current.Tip != attempt.Stack.Tip {
+		if scopeChanged(*current, attempt.Stack) {
 			fmt.Fprintf(&out, "New review commits (inclusive): %s — %s\n", shortStack(*current), safeText(current.Subject))
 		}
 	} else {
@@ -114,6 +114,40 @@ type savedProgress struct {
 	Files        *int    `json:"files"`
 	Comments     []any   `json:"comments"`
 	SessionNotes *string `json:"sessionNotes"`
+}
+
+func savedProgressAvailable(data []byte, saved *savedProgress) bool {
+	if len(data) == 0 {
+		return false
+	}
+	if err := json.Unmarshal(data, saved); err != nil {
+		return false
+	}
+	if saved.Reviewed == nil {
+		return false
+	}
+	return saved.Files != nil
+}
+
+func showStatusDetails(result review.Result, verbose bool) bool {
+	if !verbose {
+		return false
+	}
+	return result.Command == "status"
+}
+
+func hasSessionNotes(notes *string) bool {
+	if notes == nil {
+		return false
+	}
+	return *notes != ""
+}
+
+func scopeChanged(current, captured review.Stack) bool {
+	if current.Base != captured.Base {
+		return true
+	}
+	return current.Tip != captured.Tip
 }
 
 func renderDetails(out *strings.Builder, entries []review.Entry) error {

@@ -259,7 +259,7 @@ func (r Repository) reviewBranch(ctx context.Context) (string, error) {
 	if err == nil {
 		return branch, nil
 	}
-	if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 1 {
+	if !detachedHEADExit(err) {
 		return "", err
 	}
 	for _, backend := range []string{"rebase-merge", "rebase-apply"} {
@@ -327,6 +327,23 @@ func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]S
 	return stacks, nil
 }
 
+func detachedHEADExit(err error) bool {
+	exit, ok := errors.AsType[*exec.ExitError](err)
+	if !ok {
+		return false
+	}
+	return exit.ExitCode() == 1
+}
+
+func changesCommitMessage(kind string) bool {
+	switch kind {
+	case "amend!", "reword!":
+		return true
+	default:
+		return false
+	}
+}
+
 func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, kind, subject string) bool {
 	matches := targets[subject]
 	if len(matches) != 1 {
@@ -339,7 +356,7 @@ func tryAppendFeedback(stacks []Stack, targets map[string][]int, sha, kind, subj
 	last.Commits = append(last.Commits, sha)
 	last.Tip = sha
 	last.Key = last.Commits[0] + ".." + sha
-	if kind == "amend!" || kind == "reword!" {
+	if changesCommitMessage(kind) {
 		last.AmendCount++
 	}
 	return true
