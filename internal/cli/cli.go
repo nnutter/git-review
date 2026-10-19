@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nnutter/git-review/internal/cli/commits"
+	"github.com/nnutter/git-review/internal/cli/feedback"
 	"github.com/nnutter/git-review/internal/cli/files"
 	"github.com/nnutter/git-review/internal/cli/status"
 	"github.com/nnutter/git-review/internal/display"
@@ -55,13 +56,6 @@ type application struct {
 func (a *application) command() *cobra.Command {
 	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
-	feedback := &cobra.Command{Use: "feedback", Short: "Read current and historical saved feedback without launching tuicr", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		result, err := a.service.Feedback(cmd.Context())
-		if err != nil {
-			return err
-		}
-		return display.Write(a.output, a.json, result, a.verbose)
-	}}
 	approve := &cobra.Command{Use: "approve <start_commit> [<end_commit>]", Aliases: []string{"confirm"}, Short: "Record explicit user approval of complete stacks", Long: "Record user approval without launching tuicr. Endpoints are inclusive and\nmust include complete stacks, including all attached feedback commits.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		last := ""
 		if len(args) == 2 {
@@ -73,8 +67,9 @@ func (a *application) command() *cobra.Command {
 		}
 		return display.Write(a.output, a.json, result, a.verbose)
 	}}
-	root.AddCommand(feedback, approve, a.logCommand())
+	root.AddCommand(approve, a.logCommand())
 	commits.Install(root, a.service, a.input, a.output, a.terminal)
+	feedback.Install(root, a.service, a.output)
 	files.Install(root, a.service, a.input, a.output, a.terminal)
 	status.Install(root, a.service, a.output)
 	return root
