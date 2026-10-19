@@ -58,7 +58,7 @@ func (a *application) command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.write(result)
+		return display.Write(a.output, a.json, result, a.verbose)
 	}}
 	approve := &cobra.Command{Use: "approve <start_commit> [<end_commit>]", Aliases: []string{"confirm"}, Short: "Record explicit user approval of complete stacks", Long: "Record user approval without launching tuicr. Endpoints are inclusive and\nmust include complete stacks, including all attached feedback commits.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		last := ""
@@ -69,7 +69,7 @@ func (a *application) command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.write(result)
+		return display.Write(a.output, a.json, result, a.verbose)
 	}}
 	var onlyNeedsReview, isReviewing bool
 	status := &cobra.Command{Use: "status", Short: "Show all feature stacks and their review states", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -92,7 +92,7 @@ func (a *application) command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.write(result)
+		return display.Write(a.output, a.json, result, a.verbose)
 	}}
 	status.Flags().BoolVarP(&a.verbose, "verbose", "v", false, "Show saved review details before the table")
 	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
@@ -203,7 +203,7 @@ func (a *application) runFiles(ctx context.Context, options review.FilesOptions)
 	if err != nil {
 		return err
 	}
-	return a.writeFiles(result)
+	return display.WriteFiles(a.output, a.json, result)
 }
 
 func (a *application) runReview(ctx context.Context, options review.ReviewOptions) error {
@@ -225,21 +225,7 @@ func (a *application) runReview(ctx context.Context, options review.ReviewOption
 	if err != nil {
 		return err
 	}
-	return a.write(result)
-}
-
-func (a *application) write(result review.Result) error {
-	if a.json {
-		return display.WriteJSON(a.output, result)
-	}
-	return display.Render(a.output, result, a.verbose)
-}
-
-func (a *application) writeFiles(result review.FilesResult) error {
-	if a.json {
-		return display.WriteJSON(a.output, result)
-	}
-	return display.RenderFiles(a.output, result)
+	return display.Write(a.output, a.json, result, a.verbose)
 }
 
 func wantsPatch(patch, difft, hunk bool) bool {
