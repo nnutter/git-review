@@ -39,24 +39,7 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		}
 	}
 	if len(result.Entries) > 0 {
-		rows := make([][]string, 0, len(result.Entries))
-		for _, entry := range result.Entries {
-			label := statusLabel(entry.Status)
-			if entry.Previous != nil {
-				if entry.Status == "needs_review" {
-					label += " (changed)"
-				}
-			}
-			rows = append(rows, []string{label, shortStack(entry.Stack), safeText(entry.Stack.Subject)})
-		}
-		t := table.New().Headers("STATUS", "COMMITS (inclusive)", "SUBJECT").Rows(rows...).Border(lipgloss.RoundedBorder()).StyleFunc(func(row, _ int) lipgloss.Style {
-			style := lipgloss.NewStyle().Padding(0, 1)
-			if row == table.HeaderRow {
-				return style.Bold(true).Foreground(lipgloss.Color("12"))
-			}
-			return style
-		})
-		fmt.Fprintln(&out, t.Render())
+		fmt.Fprintln(&out, renderStackTable(result.Entries))
 	}
 	for _, attempt := range result.Active {
 		fmt.Fprintf(&out, "Active attempt: %s  %s\n", safeText(attempt.ID), shortStack(attempt.Stack))
@@ -74,6 +57,27 @@ func renderResult(result review.Result, verbose bool) (string, error) {
 		fmt.Fprintln(&out, "Choose git-review run --recover, git-review run --replace, or leave the attempt unchanged.")
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+func renderStackTable(entries []review.Entry) string {
+	rows := make([][]string, 0, len(entries))
+	for _, entry := range entries {
+		label := statusLabel(entry.Status)
+		if entry.Previous != nil {
+			if entry.Status == "needs_review" {
+				label += " (changed)"
+			}
+		}
+		rows = append(rows, []string{label, shortStack(entry.Stack), safeText(entry.Stack.Subject)})
+	}
+	t := table.New().Headers("STATUS", "COMMITS (inclusive)", "SUBJECT").Rows(rows...).Border(lipgloss.RoundedBorder()).StyleFunc(func(row, _ int) lipgloss.Style {
+		style := lipgloss.NewStyle().Padding(0, 1)
+		if row == table.HeaderRow {
+			return style.Bold(true).Foreground(lipgloss.Color("12"))
+		}
+		return style
+	})
+	return t.Render()
 }
 
 func recoveryDescription(decision *review.Decision) string {
