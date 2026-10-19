@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
+	"github.com/nnutter/git-review/internal/cli/approve"
 	"github.com/nnutter/git-review/internal/cli/commits"
 	"github.com/nnutter/git-review/internal/cli/feedback"
 	"github.com/nnutter/git-review/internal/cli/files"
@@ -45,7 +46,6 @@ func Execute(ctx context.Context, args []string, dir string, input io.Reader, ou
 
 type application struct {
 	json        bool
-	verbose     bool
 	service     review.Service
 	input       io.Reader
 	output      io.Writer
@@ -56,20 +56,10 @@ type application struct {
 func (a *application) command() *cobra.Command {
 	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
-	approve := &cobra.Command{Use: "approve <start_commit> [<end_commit>]", Aliases: []string{"confirm"}, Short: "Record explicit user approval of complete stacks", Long: "Record user approval without launching tuicr. Endpoints are inclusive and\nmust include complete stacks, including all attached feedback commits.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
-		last := ""
-		if len(args) == 2 {
-			last = args[1]
-		}
-		result, err := a.service.Approve(cmd.Context(), args[0], last)
-		if err != nil {
-			return err
-		}
-		return display.Write(a.output, a.json, result, a.verbose)
-	}}
-	root.AddCommand(approve, a.logCommand())
+	root.AddCommand(a.logCommand())
 	commits.Install(root, a.service, a.input, a.output, a.terminal)
 	feedback.Install(root, a.service, a.output)
+	approve.Install(root, a.service, a.output)
 	files.Install(root, a.service, a.input, a.output, a.terminal)
 	status.Install(root, a.service, a.output)
 	return root
