@@ -100,6 +100,18 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
 	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 5}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
+	assertStatusVerbosity(t, binary, dir, out)
+	git(t, dir, "reset", "--hard", "main")
+	out, _, err = executeBinary(t, binary, dir, "status", "--json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, []review.StateCount{{State: "needs_review"}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
+	require.Empty(t, result.Entries)
+	require.Equal(t, "pending", result.Status) // The historical active attempt still needs recovery.
+}
+
+func assertStatusVerbosity(t *testing.T, binary, dir, out string) {
+	t.Helper()
 	for _, flag := range []string{"", "-v", "--verbose"} {
 		args := []string{"status"}
 		if flag != "" {
@@ -122,13 +134,6 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 		require.NoError(t, err)
 		require.JSONEq(t, out, jsonOut)
 	}
-	git(t, dir, "reset", "--hard", "main")
-	out, _, err = executeBinary(t, binary, dir, "status", "--json")
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	require.Equal(t, []review.StateCount{{State: "needs_review"}, {State: "reviewing"}, {State: "feedback"}, {State: "incomplete"}, {State: "approved"}}, result.Summary)
-	require.Empty(t, result.Entries)
-	require.Equal(t, "pending", result.Status) // The historical active attempt still needs recovery.
 }
 
 func TestStatusWithoutReviewHistory(t *testing.T) {
