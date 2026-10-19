@@ -4,8 +4,9 @@ import (
 	"encoding/json/jsontext"
 	"testing"
 
-	"github.com/nnutter/git-review/internal/review"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nnutter/git-review/internal/review"
 )
 
 func TestRecoveryDecisionExplainsSavedWork(t *testing.T) {

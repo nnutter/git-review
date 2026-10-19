@@ -20,14 +20,14 @@ import (
 // reviewable content. Attached fixup! commits carry no message, so patch
 // identity alone decides their review status.
 type Stack struct {
-	Repo      string   `json:"repo"`
-	Commits   []string `json:"commits"`
-	Base      string   `json:"base"`
-	Tip       string   `json:"tip"`
-	Subject   string   `json:"subject"`
-	Key       string   `json:"key"`
-	ChangeID  string   `json:"changeId,omitempty"`
-	PatchHash string   `json:"patchHash,omitempty"`
+	Repo       string   `json:"repo"`
+	Commits    []string `json:"commits"`
+	Base       string   `json:"base"`
+	Tip        string   `json:"tip"`
+	Subject    string   `json:"subject"`
+	Key        string   `json:"key"`
+	ChangeID   string   `json:"changeId,omitempty"`
+	PatchHash  string   `json:"patchHash,omitempty"`
 	AmendCount int      `json:"amendCount,omitzero"`
 }
 
