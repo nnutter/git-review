@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nnutter/git-review/internal/cli/commits"
+	"github.com/nnutter/git-review/internal/cli/files"
 	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
 )
@@ -99,24 +100,10 @@ func (a *application) command() *cobra.Command {
 	status.Flags().BoolVar(&isReviewing, "is-reviewing", false, "Check whether a review is running for the current branch")
 	status.MarkFlagsMutuallyExclusive("needs-review", "is-reviewing")
 	status.MarkFlagsMutuallyExclusive("verbose", "is-reviewing")
-	root.AddCommand(feedback, approve, status, a.filesCommand(), a.logCommand())
+	root.AddCommand(feedback, approve, status, a.logCommand())
 	commits.Install(root, a.service, a.input, a.output, a.terminal)
+	files.Install(root, a.service, a.input, a.output, a.terminal)
 	return root
-}
-
-func (a *application) filesCommand() *cobra.Command {
-	var untracked bool
-	var session string
-	cmd := &cobra.Command{Use: "files [<path>]", Short: "Review working-tree files with tuicr", Long: "Review working-tree files with tuicr. Without a path, review every tracked\nfile with tuicr tui --all-files. With a path, review that file or directory\nwith tuicr tui --file. With --untracked and no path, review untracked files\nin the current directory with tuicr tui --file . Address file feedback as new commits,\nlogically organized, not fixup commits.", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		options := review.FilesOptions{Session: session, Untracked: untracked}
-		if len(args) > 0 {
-			options.Path = args[0]
-		}
-		return a.runFiles(cmd.Context(), options)
-	}}
-	cmd.Flags().BoolVar(&untracked, "untracked", false, "Review untracked files in the current directory (defaults path to .)")
-	cmd.Flags().StringVar(&session, "session", "", "Select an exact saved session ID, slug, or indexed session path")
-	return cmd
 }
 
 func (a *application) logCommand() *cobra.Command {
@@ -167,19 +154,6 @@ func (a *application) logCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&difft, "difft", false, "Show patches with difft (requires difft on PATH)")
 	cmd.Flags().BoolVar(&hunk, "hunk", false, "Show patches with hunk pager (requires hunk on PATH)")
 	return cmd
-}
-
-func (a *application) runFiles(ctx context.Context, options review.FilesOptions) error {
-	reader, err := review.DefaultSavedReader()
-	if err != nil {
-		return err
-	}
-	reviewer := review.FileReviewer{Service: a.service, Reader: reader, Input: a.input, Terminal: a.terminal}
-	result, err := reviewer.Review(ctx, options)
-	if err != nil {
-		return err
-	}
-	return display.WriteFiles(a.output, a.json, result)
 }
 
 func wantsPatch(patch, difft, hunk bool) bool {
