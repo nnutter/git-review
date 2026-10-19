@@ -237,15 +237,17 @@ func TestHelpAndVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "approve")
 	require.Contains(t, out, "run")
-	require.Contains(t, out, "running")
 	require.Contains(t, out, "--json")
 	require.NotContains(t, out, "confirm")
 	require.NotContains(t, out, "challenge")
-	for _, name := range []string{"needs-review", "review", "review-running"} {
+	for _, name := range []string{"needs-review", "review", "review-running", "running"} {
 		out, _, err = execute(t, t.TempDir(), name)
 		require.ErrorContains(t, err, "unknown command")
 		require.Empty(t, out)
 	}
+	out, _, err = execute(t, t.TempDir(), "status", "--help")
+	require.NoError(t, err)
+	require.Contains(t, out, "is-reviewing")
 	out, _, err = execute(t, t.TempDir(), "--version")
 	require.NoError(t, err)
 	require.Contains(t, out, "test-version")

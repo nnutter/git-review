@@ -151,15 +151,17 @@ Current and historical feedback remain available in the result.
 ### Check live review activity
 
 ```sh
-git-review running --json
+git-review status --is-reviewing --json
 ```
 
-Successful output is `{"version":1,"running":true}` or `{"version":1,"running":false}`.
-The command reports whether the current branch owns the live review worktree lock without changing review state or creating files.
+Successful output is `{"version":1,"command":"status","is_reviewing":true}` or `{"version":1,"command":"status","is_reviewing":false}`.
+Without `--json`, the command prints `Is reviewing: true` or `Is reviewing: false`.
+The flag reports whether the current branch owns the live review worktree lock without changing review state or creating files.
 A running automatic review holds this lock across all selected stacks.
 A persisted `reviewing` attempt alone does not indicate a running process.
-A review on another branch returns `running: false`, including when that branch is in a linked worktree.
+A review on another branch returns `is_reviewing: false`, including when that branch is in a linked worktree.
 The lock remains repository-wide to prevent concurrent reviews from using the shared review checkout.
+The flag cannot be combined with `--needs-review` or `--verbose`.
 Command failures exit with status 1 and emit the standard versioned JSON error object.
 
 ### Collect saved feedback

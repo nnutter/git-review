@@ -79,6 +79,24 @@ export function parseGitReviewStatus(stdout: string): GitReviewStatus | undefine
 	};
 }
 
+/**
+ * Parse successful `git-review status --is-reviewing --json` stdout.
+ * Returns the reviewing flag, or undefined for unsupported results.
+ */
+export function parseIsReviewing(stdout: string): boolean | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(stdout);
+	} catch {
+		return undefined;
+	}
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+	const result = parsed as { version?: unknown; command?: unknown; is_reviewing?: unknown };
+	if (result.version !== 1 || result.command !== "status") return undefined;
+	if (typeof result.is_reviewing !== "boolean") return undefined;
+	return result.is_reviewing;
+}
+
 /** Accept only the status object git-review publishes. */
 export function reviewLineFromEvent(data: unknown): string | undefined {
 	if (data === null || typeof data !== "object") return undefined;

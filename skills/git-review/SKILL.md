@@ -83,6 +83,9 @@ Do not silently lose selected feedback or address the same attempt twice.
 
 If `active` contains an attempt, pause before rewriting history.
 Ask the user to finish or resolve the active review.
+Check live activity with `git-review status --is-reviewing --json` before rewriting history.
+When `is_reviewing` is true, a `commits` or `files` review holds the worktree lock.
+Ask the user to finish the live review instead of rewriting underneath it.
 This command does not collect uncaptured notes from interrupted tuicr sessions.
 Do not use `git-review run --recover` to retrieve feedback.
 Recovery opens an interactive review and requires the user's choice.

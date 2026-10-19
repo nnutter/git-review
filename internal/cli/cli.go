@@ -73,8 +73,23 @@ func (a *application) command() *cobra.Command {
 		}
 		return a.write(result)
 	}}
-	var onlyNeedsReview bool
+	var onlyNeedsReview, isReviewing bool
 	status := &cobra.Command{Use: "status", Short: "Show all feature stacks and their review states", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if isReviewing {
+			reviewing, err := a.service.ReviewRunning(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if a.json {
+				return writeJSON(a.output, struct {
+					Version     int    `json:"version"`
+					Command     string `json:"command"`
+					IsReviewing bool   `json:"is_reviewing"`
+				}{Version: 1, Command: "status", IsReviewing: reviewing})
+			}
+			_, err = fmt.Fprintf(a.output, "Is reviewing: %t\n", reviewing)
+			return err
+		}
 		result, err := a.service.Status(cmd.Context(), onlyNeedsReview)
 		if err != nil {
 			return err
@@ -83,21 +98,10 @@ func (a *application) command() *cobra.Command {
 	}}
 	status.Flags().BoolVarP(&a.verbose, "verbose", "v", false, "Show saved review details before the table")
 	status.Flags().BoolVar(&onlyNeedsReview, "needs-review", false, "Show unresolved stacks and active review attempts")
-	activity := &cobra.Command{Use: "running", Short: "Check whether a review is running for the current branch", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		running, err := a.service.ReviewRunning(cmd.Context())
-		if err != nil {
-			return err
-		}
-		if a.json {
-			return writeJSON(a.output, struct {
-				Version int  `json:"version"`
-				Running bool `json:"running"`
-			}{Version: 1, Running: running})
-		}
-		_, err = fmt.Fprintf(a.output, "Review running: %t\n", running)
-		return err
-	}}
-	root.AddCommand(feedback, approve, status, activity, a.runCommand(), a.logCommand())
+	status.Flags().BoolVar(&isReviewing, "is-reviewing", false, "Check whether a review is running for the current branch")
+	status.MarkFlagsMutuallyExclusive("needs-review", "is-reviewing")
+	status.MarkFlagsMutuallyExclusive("verbose", "is-reviewing")
+	root.AddCommand(feedback, approve, status, a.runCommand(), a.logCommand())
 	return root
 }
 

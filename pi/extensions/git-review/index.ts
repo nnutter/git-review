@@ -23,6 +23,7 @@ import {
 	MISE_AFTER_ON_STOP_EVENT,
 	MISE_COORDINATES_EVENT,
 	parseGitReviewStatus,
+	parseIsReviewing,
 	GIT_REVIEW_READY_EVENT,
 	GIT_REVIEW_REQUEST_STATUS_EVENT,
 	GIT_REVIEW_STATUS_EVENT,
@@ -86,15 +87,13 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (aborted || status.feedback === lastNudgedFeedback) return;
-		const activity = await pi.exec("git-review", ["running", "--json"], {
+		const activity = await pi.exec("git-review", ["status", "--is-reviewing", "--json"], {
 			cwd: ctx.cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});
 		if (activity.killed || activity.code !== 0) return;
-		const parsed: unknown = JSON.parse(activity.stdout);
-		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
-		const { version, running } = parsed as { version?: unknown; running?: unknown };
-		if (version !== 1 || running !== false || epoch !== generation) return;
+		const reviewing = parseIsReviewing(activity.stdout);
+		if (reviewing !== false || epoch !== generation) return;
 		if (idleOnly && (!ctx.isIdle() || !idleNoticesAllowed)) return;
 		lastNudgedFeedback = status.feedback;
 		nudge(ctx, status.feedback);

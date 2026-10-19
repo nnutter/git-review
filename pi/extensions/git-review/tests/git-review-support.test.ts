@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseGitReviewStatus } from "../support.ts";
+import { parseGitReviewStatus, parseIsReviewing } from "../support.ts";
 
 const summary = [
 	{ state: "needs_review", count: 0 },
@@ -33,4 +33,24 @@ test("status parser rejects unsupported envelopes and invalid summaries", () => 
 		assert.equal(parseGitReviewStatus(JSON.stringify(invalid)), undefined);
 	}
 	assert.equal(parseGitReviewStatus("not json"), undefined);
+});
+
+test("is-reviewing parser reads status flag", () => {
+	assert.equal(parseIsReviewing(JSON.stringify({ version: 1, command: "status", is_reviewing: true })), true);
+	assert.equal(parseIsReviewing(JSON.stringify({ version: 1, command: "status", is_reviewing: false })), false);
+});
+
+test("is-reviewing parser rejects unsupported envelopes", () => {
+	for (const invalid of [
+		null,
+		[],
+		{ version: 2, command: "status", is_reviewing: false },
+		{ version: 1, command: "running", is_reviewing: false },
+		{ version: 1, command: "status" },
+		{ version: 1, command: "status", is_reviewing: "false" },
+		{ version: 1, running: false },
+	]) {
+		assert.equal(parseIsReviewing(JSON.stringify(invalid)), undefined);
+	}
+	assert.equal(parseIsReviewing("not json"), undefined);
 });

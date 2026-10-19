@@ -12,7 +12,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 	const messages: string[] = [];
 	const published: unknown[] = [];
 	let feedback = 1;
-	let activity = { code: 0, killed: false, stdout: '{"version":1,"running":true}' };
+	let activity = { code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":true}' };
 	let idle = true;
 	let activityGate: Promise<void> | undefined;
 	let activityCalls = 0;
@@ -23,9 +23,10 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 		exec: async (command: string, args: string[]) => {
 			if (command === "git") return { code: 0, killed: false, stdout: "true" };
 			assert.equal(command, "git-review");
-			if (args[0] === "running") {
+			if (args[0] === "status" && args[1] === "--is-reviewing") {
 				activityCalls++;
 				await activityGate;
+				assert.deepEqual(args, ["status", "--is-reviewing", "--json"]);
 				return activity;
 			}
 			assert.deepEqual(args, ["status", "--needs-review", "--json"]);
@@ -65,7 +66,7 @@ for (const coordinated of [false, true]) {
 		await settle();
 		assert.equal(h.messages.length, 0);
 		assert.equal(h.published.length, 1, "UI still receives review counts");
-		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 		await settle();
 		assert.equal(h.messages.length, 1, "suppression does not consume the notice");
 		await settle();
@@ -89,7 +90,7 @@ for (const mode of ["tui", "rpc"] as const) {
 		t.mock.timers.tick(5_000);
 		await setImmediate();
 		assert.equal(h.messages.length, 0);
-		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 		h.setIdle(false);
 		t.mock.timers.tick(5_000);
 		await setImmediate();
@@ -116,7 +117,7 @@ test("idle checks wait for the coordinated on-stop hook", async t => {
 	await h.emit("session_start");
 	h.events.emit(MISE_COORDINATES_EVENT);
 	await h.emit("agent_start");
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 	// Pi can report idle while another extension is still finishing on-stop.
 	await h.emit("agent_settled");
 	t.mock.timers.tick(5_000);
@@ -133,7 +134,7 @@ test("non-interactive sessions do not start idle polling", async t => {
 	for (const mode of ["print", "json"] as const) {
 		const h = harness(mode);
 		await h.emit("session_start");
-		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+		h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 		t.mock.timers.tick(10_000);
 		await setImmediate();
 		assert.equal(h.activityCalls(), 0);
@@ -146,7 +147,7 @@ test("slow idle checks do not overlap or notify after shutdown", async t => {
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const h = harness();
 	await h.emit("session_start");
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 	let release!: () => void;
 	h.setActivityGate(new Promise<void>(resolve => { release = resolve; }));
 	t.mock.timers.tick(5_000);
@@ -167,13 +168,13 @@ test("idle notices respect abort and recheck whether the agent is idle", async t
 	t.after(() => h.emit("session_shutdown"));
 	await h.emit("session_start");
 	await h.emit("agent_settled", { aborted: true });
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 	t.mock.timers.tick(5_000);
 	await setImmediate();
 	assert.equal(h.messages.length, 0, "abort must not restart the agent through polling");
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":true}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":true}' });
 	await h.emit("agent_settled");
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 	let release!: () => void;
 	h.setActivityGate(new Promise<void>(resolve => { release = resolve; }));
 	t.mock.timers.tick(5_000);
@@ -192,16 +193,19 @@ test("activity query failures do not authorize a feedback notice", async () => {
 	const h = harness();
 	for (const result of [
 		{ code: 1, killed: false, stdout: '{"version":1,"status":"error"}' },
-		{ code: 0, killed: true, stdout: '{"version":1,"running":false}' },
+		{ code: 0, killed: true, stdout: '{"version":1,"command":"status","is_reviewing":false}' },
 		{ code: 0, killed: false, stdout: 'not json' },
-		{ code: 0, killed: false, stdout: '{"version":2,"running":false}' },
+		{ code: 0, killed: false, stdout: '{"version":2,"command":"status","is_reviewing":false}' },
 		{ code: 0, killed: false, stdout: '{"version":1}' },
+		{ code: 0, killed: false, stdout: '{"version":1,"command":"status"}' },
+		{ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":"false"}' },
+		{ code: 0, killed: false, stdout: '{"version":1,"running":false}' },
 	]) {
 		h.setActivity(result);
 		await h.emit("agent_settled");
 		assert.equal(h.messages.length, 0);
 	}
-	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"running":false}' });
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
 	await h.emit("agent_settled", { aborted: true });
 	assert.equal(h.messages.length, 0);
 	await h.emit("agent_settled");
