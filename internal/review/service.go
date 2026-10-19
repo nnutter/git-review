@@ -49,6 +49,26 @@ type StateCount struct {
 	Count int    `json:"count"`
 }
 
+func countStates(view Snapshot, state State) []StateCount {
+	counts := []StateCount{
+		{State: "needs_review"},
+		{State: "reviewing"},
+		{State: "feedback"},
+		{State: "incomplete"},
+		{State: "approved"},
+	}
+	for _, stack := range view.Stacks {
+		status := entryFor(state, stack).Status
+		for i := range counts {
+			if counts[i].State == status {
+				counts[i].Count += len(stack.Commits)
+				break
+			}
+		}
+	}
+	return counts
+}
+
 // Service coordinates the current branch with its durable review history.
 type Service struct{ Repository Repository }
 
@@ -156,38 +176,6 @@ func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 	return result, nil
 }
 
-func (s Service) snapshotState(ctx context.Context) (Snapshot, State, error) {
-	view, err := s.Repository.Snapshot(ctx)
-	if err != nil {
-		return Snapshot{}, State{}, err
-	}
-	state, err := (Store{Path: view.Path}).Load()
-	if err != nil {
-		return Snapshot{}, State{}, err
-	}
-	return view, state, nil
-}
-
-func countStates(view Snapshot, state State) []StateCount {
-	counts := []StateCount{
-		{State: "needs_review"},
-		{State: "reviewing"},
-		{State: "feedback"},
-		{State: "incomplete"},
-		{State: "approved"},
-	}
-	for _, stack := range view.Stacks {
-		status := entryFor(state, stack).Status
-		for i := range counts {
-			if counts[i].State == status {
-				counts[i].Count += len(stack.Commits)
-				break
-			}
-		}
-	}
-	return counts
-}
-
 func (s Service) selectRange(ctx context.Context, view Snapshot, first, last string) ([]Stack, error) {
 	startSHA, err := s.Repository.Resolve(ctx, first)
 	if err != nil {
@@ -216,6 +204,18 @@ func (s Service) selectRange(ctx context.Context, view Snapshot, first, last str
 		return nil, fmt.Errorf("approval requires complete stacks in oldest-first order; include all attached fixups")
 	}
 	return view.Stacks[start : end+1], nil
+}
+
+func (s Service) snapshotState(ctx context.Context) (Snapshot, State, error) {
+	view, err := s.Repository.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, State{}, err
+	}
+	state, err := (Store{Path: view.Path}).Load()
+	if err != nil {
+		return Snapshot{}, State{}, err
+	}
+	return view, state, nil
 }
 
 func (s Service) unchanged(ctx context.Context, view Snapshot) error {
