@@ -4,10 +4,8 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"syscall"
 
 	"github.com/charmbracelet/fang"
@@ -17,6 +15,7 @@ import (
 	"github.com/nnutter/git-review/internal/cli/commits"
 	"github.com/nnutter/git-review/internal/cli/feedback"
 	"github.com/nnutter/git-review/internal/cli/files"
+	"github.com/nnutter/git-review/internal/cli/log"
 	"github.com/nnutter/git-review/internal/cli/status"
 	"github.com/nnutter/git-review/internal/display"
 	"github.com/nnutter/git-review/internal/review"
@@ -56,71 +55,11 @@ type application struct {
 func (a *application) command() *cobra.Command {
 	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
 	root.PersistentFlags().BoolVar(&a.json, "json", a.json, "Emit a versioned JSON result without interactive prompts")
-	root.AddCommand(a.logCommand())
 	commits.Install(root, a.service, a.input, a.output, a.terminal)
 	feedback.Install(root, a.service, a.output)
 	approve.Install(root, a.service, a.output)
 	files.Install(root, a.service, a.input, a.output, a.terminal)
+	log.Install(root, a.service, a.input, a.output, a.terminal)
 	status.Install(root, a.service, a.output)
 	return root
-}
-
-func (a *application) logCommand() *cobra.Command {
-	var patch, ignoreAllSpace, stat, difft, hunk bool
-	cmd := &cobra.Command{
-		Use:   "log",
-		Short: "Show commits after the upstream in oldest-first order",
-		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nUse --difft for Difftastic or --hunk for hunk pager. Both imply --patch.\nOutput uses Git's format and pager, not git-review's review state.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if a.json {
-				return fmt.Errorf("log does not support --json")
-			}
-			var args []string
-			if hunk {
-				args = append(args, "-c", "core.pager=hunk pager")
-			}
-			if difft {
-				args = append(args, "-c", "diff.external=difft")
-			}
-			args = append(args, "log", "@{u}..HEAD", "--reverse")
-			if difft {
-				args = append(args, "--ext-diff")
-			}
-			if wantsPatch(patch, difft, hunk) {
-				args = append(args, "-p")
-			}
-			if ignoreAllSpace {
-				args = append(args, "-w")
-			}
-			if stat {
-				args = append(args, "--stat")
-			}
-			git := exec.CommandContext(cmd.Context(), "git", args...)
-			git.Dir = a.service.Repository.Dir
-			git.Stdin = a.input
-			git.Stdout = a.output
-			git.Stderr = a.terminal
-			if err := git.Run(); err != nil {
-				return fmt.Errorf("git log: %w", err)
-			}
-			return nil
-		},
-	}
-	cmd.Flags().BoolVarP(&patch, "patch", "p", false, "Show the patch for each commit")
-	cmd.Flags().BoolVarP(&ignoreAllSpace, "ignore-all-space", "w", false, "Ignore whitespace changes in patches")
-	cmd.Flags().BoolVar(&stat, "stat", false, "Show diff statistics for each commit")
-	cmd.Flags().BoolVar(&difft, "difft", false, "Show patches with difft (requires difft on PATH)")
-	cmd.Flags().BoolVar(&hunk, "hunk", false, "Show patches with hunk pager (requires hunk on PATH)")
-	return cmd
-}
-
-func wantsPatch(patch, difft, hunk bool) bool {
-	if patch {
-		return true
-	}
-	if difft {
-		return true
-	}
-	return hunk
 }
