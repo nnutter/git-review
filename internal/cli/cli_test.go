@@ -28,7 +28,8 @@ func git(t *testing.T, dir string, args ...string) string {
 
 func featureRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	git(t, dir, "init", "-b", "main")
 	git(t, dir, "config", "user.name", "Test")
 	git(t, dir, "config", "user.email", "test@example.com")
