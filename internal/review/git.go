@@ -150,26 +150,15 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
-	var view Snapshot
-	repo, err := r.git(ctx, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return view, "", err
-	}
-	branch, err := r.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
-	if err != nil {
-		return view, "", fmt.Errorf("review requires a branch, not detached HEAD: %w", err)
-	}
-	common, err := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	view, repo, err := r.checkoutView(ctx)
 	if err != nil {
 		return view, "", err
 	}
 	target, err := r.git(ctx, "rev-parse", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
-		return view, "", fmt.Errorf("branch %s requires a configured Git upstream: %w", branch, err)
+		return view, "", fmt.Errorf("branch %s requires a configured Git upstream: %w", view.Branch, err)
 	}
-	view.Branch = branch
 	view.Target = target
-	view.Path = filepath.Join(common, "tuicr-reviews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(branch))))
 	return view, repo, nil
 }
 
@@ -189,6 +178,25 @@ func (r Repository) changeID(ctx context.Context, sha string, ids map[string]boo
 	}
 	ids[id] = true
 	return id, nil
+}
+
+func (r Repository) checkoutView(ctx context.Context) (Snapshot, string, error) {
+	var view Snapshot
+	repo, err := r.git(ctx, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return view, "", err
+	}
+	branch, err := r.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return view, "", fmt.Errorf("review requires a branch, not detached HEAD: %w", err)
+	}
+	common, err := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return view, "", err
+	}
+	view.Branch = branch
+	view.Path = filepath.Join(common, "tuicr-reviews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(branch))))
+	return view, repo, nil
 }
 
 func (r Repository) git(ctx context.Context, args ...string) (string, error) {
