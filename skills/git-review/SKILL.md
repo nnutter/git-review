@@ -49,8 +49,14 @@ Counts do not identify feedback targets or authorize approval.
 `git-review commits --json` reviews commit stacks and returns `"command":"commits"`.
 Address its feedback with fixup commits inserted immediately after their target stacks.
 
-`git-review files [<path>] --json` reviews working-tree files and returns `"command":"files"`.
-It runs `tuicr tui --all-files` without a path, `tuicr tui --file <path>` with a path, and `tuicr tui --file .` with `--untracked` and no path.
+`git-review files [<path>] --json` returns `"command":"files"`.
+Without a path or scope flag, it reviews the committed branch diff from the merge-base with upstream to HEAD.
+The default requires a configured upstream and excludes uncommitted changes.
+Use `--all` to annotate every tracked file with `tuicr tui --all-files`.
+An explicit path uses `tuicr tui --file <path>`.
+`--untracked` uses `tuicr tui --file .` in the current directory.
+These explicit scopes do not require an upstream.
+Do not combine `--all` with a path or `--untracked`.
 Address its feedback as one or more new commits, logically organized and sized.
 Do not use `fixup!`, `amend!`, or `reword!` commits for file feedback.
 

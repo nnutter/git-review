@@ -133,7 +133,7 @@ func TestFilesReviewArgMappingAndLock(t *testing.T) {
 		diffSource string
 		base       string
 	}{
-		{"all files", FilesOptions{}, "--all-files", "pristine", "pristine:abc:def"},
+		{"all files", FilesOptions{All: true}, "--all-files", "pristine", "pristine:abc:def"},
 		{"single file", FilesOptions{Path: "file.txt"}, "--file\nfile.txt", "working_tree", "file"},
 		{"untracked defaults to dot", FilesOptions{Untracked: true}, "--file\n.", "working_tree", "file"},
 	} {

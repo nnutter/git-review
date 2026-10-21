@@ -24,7 +24,7 @@ func TestRealTuicrFileScopes(t *testing.T) {
 		{name: "nested file after root review", args: []string{"src/nested.txt"}, previous: true},
 		{name: "nested directory", args: []string{"src"}, previous: true},
 		{name: "untracked from subdirectory", args: []string{"--untracked"}, cwd: "src", previous: true},
-		{name: "tracked from subdirectory", cwd: "src", previous: true},
+		{name: "tracked from subdirectory", args: []string{"--all"}, cwd: "src", previous: true},
 		{name: "symlink to nested file", args: []string{"linked.txt"}, previous: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,6 +42,52 @@ func TestRealTuicrFileScopes(t *testing.T) {
 			require.Len(t, result.Review.Comments, 1)
 			require.Equal(t, "Nested feedback", result.Review.Comments[0]["content"])
 			require.Equal(t, "src/nested.txt", result.Review.Comments[0]["path"])
+		})
+	}
+}
+
+func TestRealTuicrBranchFiles(t *testing.T) {
+	env := realTuicrEnvironment(t)
+	binary := buildGitReview(t)
+	for _, tc := range []struct {
+		name  string
+		cwd   string
+		merge bool
+	}{
+		{name: "root"},
+		{name: "subdirectory", cwd: "src"},
+		{name: "merged upstream", merge: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := realFeatureRepo(t)
+			require.NoError(t, os.Mkdir(filepath.Join(dir, "src"), 0o700))
+			// The upstream advances independently. Its new file must not be
+			// included in the branch diff, nor should an untracked file.
+			git(t, dir, "checkout", "main")
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "upstream.txt"), []byte("Upstream only\n"), 0o600))
+			git(t, dir, "add", "upstream.txt")
+			git(t, dir, "commit", "-m", "Advance upstream")
+			git(t, dir, "checkout", "feature")
+			if tc.merge {
+				git(t, dir, "merge", "--no-edit", "main")
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("Not committed\n"), 0o600))
+			reviewRealFile(t, binary, dir, env, "feature.txt", "Prior annotation", "--all")
+			result := reviewRealFile(t, binary, filepath.Join(dir, tc.cwd), env, "feature.txt", "Branch feedback")
+			require.Equal(t, dir, result.Repo)
+			require.False(t, result.AllFiles)
+			raw, err := os.ReadFile(result.Session)
+			require.NoError(t, err)
+			var saved struct {
+				Files map[string]any `json:"files"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &saved))
+			require.Contains(t, saved.Files, "feature.txt")
+			require.NotContains(t, saved.Files, "upstream.txt")
+			require.NotContains(t, saved.Files, "untracked.txt")
+			require.Len(t, result.Review.Comments, 1)
+			require.Equal(t, "Branch feedback", result.Review.Comments[0]["content"])
+			require.Equal(t, "feature.txt", result.Review.Comments[0]["path"])
 		})
 	}
 }

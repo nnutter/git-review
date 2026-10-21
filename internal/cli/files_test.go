@@ -27,7 +27,8 @@ func TestFilesCommandArgMapping(t *testing.T) {
 		args     []string
 		wantArgs string
 	}{
-		{"all files", []string{"files", "--json"}, "tui\n--no-update-check\n--stdout\n--all-files"},
+		{"branch diff", []string{"files", "--json"}, "tui\n--no-update-check\n--stdout\n--revisions\n" + git(t, dir, "merge-base", "@{upstream}", "HEAD") + ".." + git(t, dir, "rev-parse", "HEAD")},
+		{"explicit all files", []string{"files", "--all", "--json"}, "tui\n--no-update-check\n--stdout\n--all-files"},
 		{"single file", []string{"files", "file.txt", "--json"}, "tui\n--no-update-check\n--stdout\n--file\nfile.txt"},
 		{"untracked defaults to dot", []string{"files", "--untracked", "--json"}, "tui\n--no-update-check\n--stdout\n--file\n."},
 	} {
@@ -46,6 +47,35 @@ func TestFilesCommandArgMapping(t *testing.T) {
 			require.Equal(t, tc.wantArgs+"\n", string(launch))
 		})
 	}
+}
+
+func TestFilesUpstreamAndEmptyRange(t *testing.T) {
+	dir := featureRepo(t)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	bin := t.TempDir()
+	log := filepath.Join(bin, "launched")
+	t.Setenv("TEST_LAUNCH_LOG", log)
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "tuicr"), []byte("#!/bin/sh\nprintf launched > \"$TEST_LAUNCH_LOG\"\n"), 0o700))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	git(t, dir, "branch", "--unset-upstream")
+	_, _, err := execute(t, dir, "files", "--json")
+	require.ErrorContains(t, err, "configured Git upstream")
+	_, err = os.Stat(log)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, _, err = execute(t, dir, "files", "--all", "--json")
+	require.NoError(t, err)
+	require.FileExists(t, log)
+	require.NoError(t, os.Remove(log))
+	git(t, dir, "branch", "--set-upstream-to=main")
+	git(t, dir, "reset", "--hard", "main")
+	out, _, err := execute(t, dir, "files", "--json")
+	require.NoError(t, err)
+	var result review.FilesResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, "cancelled", result.Status)
+	_, err = os.Stat(log)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestFilesCommandDistinguishesCommits(t *testing.T) {
@@ -85,6 +115,8 @@ func TestFilesCommandTerminalAndErrors(t *testing.T) {
 		{"files", "a", "b", "--json"},
 		{"files", "--untracked", "file.txt", "--json"},
 		{"files", "--unknown", "--json"},
+		{"files", "--all", "--untracked", "--json"},
+		{"files", "--all", "file.txt", "--json"},
 	} {
 		out, terminal, err := execute(t, dir, args...)
 		require.Error(t, err)
