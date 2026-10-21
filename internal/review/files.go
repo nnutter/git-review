@@ -133,50 +133,6 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 	return fileReviewResult(result, saved)
 }
 
-// reviewBranchDiff uses Git's upstream merge-base without imposing the linear
-// history and stack-placement rules required by commit reviews.
-func (r FileReviewer) reviewBranchDiff(ctx context.Context, repo, selector string, lock *os.File) (FilesResult, error) {
-	result := FilesResult{Version: 1, Command: "files", Repo: repo}
-	repository := r.Service.Repository
-	view, _, err := repository.branchView(ctx)
-	if err != nil {
-		return result, err
-	}
-	head, err := repository.Resolve(ctx, "HEAD")
-	if err != nil {
-		return result, err
-	}
-	base, err := repository.git(ctx, "merge-base", "--all", view.Target, head)
-	if err != nil {
-		return result, err
-	}
-	if strings.Contains(base, "\n") {
-		return result, fmt.Errorf("review requires one merge-base with upstream")
-	}
-	history, err := repository.git(ctx, "rev-list", "--reverse", base+".."+head)
-	if err != nil {
-		return result, err
-	}
-	if history == "" {
-		return fileReviewResult(result, nil)
-	}
-	// Run at the root so invocation from a subdirectory keeps the same scope
-	// and saved-session identity.
-	r.Service.Repository.Dir = repo
-	if err := r.launch(ctx, []string{"tui", "--no-update-check", "--stdout", "--revisions", base + ".." + head}, lock); err != nil {
-		return result, err
-	}
-	scope := Stack{Repo: repo, Base: base, Tip: head, Commits: strings.Split(history, "\n")}
-	saved, err := r.Reader.Read(scope, selector)
-	if err != nil {
-		return result, err
-	}
-	if saved != nil {
-		result.Session = saved.Path
-	}
-	return fileReviewResult(result, saved)
-}
-
 func (r FileReviewer) launch(ctx context.Context, args []string, lock *os.File) error {
 	cmd := exec.CommandContext(ctx, "tuicr", args...)
 	cmd.Dir = r.Service.Repository.Dir
@@ -223,6 +179,50 @@ func (r FileReviewer) readReview(path, diffSource, selector string) (*SavedRevie
 		return nil, "", err
 	}
 	return r.Reader.ReadFile(root, diffSource, selector)
+}
+
+// reviewBranchDiff uses Git's upstream merge-base without imposing the linear
+// history and stack-placement rules required by commit reviews.
+func (r FileReviewer) reviewBranchDiff(ctx context.Context, repo, selector string, lock *os.File) (FilesResult, error) {
+	result := FilesResult{Version: 1, Command: "files", Repo: repo}
+	repository := r.Service.Repository
+	view, _, err := repository.branchView(ctx)
+	if err != nil {
+		return result, err
+	}
+	head, err := repository.Resolve(ctx, "HEAD")
+	if err != nil {
+		return result, err
+	}
+	base, err := repository.git(ctx, "merge-base", "--all", view.Target, head)
+	if err != nil {
+		return result, err
+	}
+	if strings.Contains(base, "\n") {
+		return result, fmt.Errorf("review requires one merge-base with upstream")
+	}
+	history, err := repository.git(ctx, "rev-list", "--reverse", base+".."+head)
+	if err != nil {
+		return result, err
+	}
+	if history == "" {
+		return fileReviewResult(result, nil)
+	}
+	// Run at the root so invocation from a subdirectory keeps the same scope
+	// and saved-session identity.
+	r.Service.Repository.Dir = repo
+	if err := r.launch(ctx, []string{"tui", "--no-update-check", "--stdout", "--revisions", base + ".." + head}, lock); err != nil {
+		return result, err
+	}
+	scope := Stack{Repo: repo, Base: base, Tip: head, Commits: strings.Split(history, "\n")}
+	saved, err := r.Reader.Read(scope, selector)
+	if err != nil {
+		return result, err
+	}
+	if saved != nil {
+		result.Session = saved.Path
+	}
+	return fileReviewResult(result, saved)
 }
 
 // Tuicr keys --file sessions by the canonical parent of a file or by the
