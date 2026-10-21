@@ -1,6 +1,7 @@
 package review
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -49,6 +50,42 @@ func (s *SavedReview) Status() string {
 
 // SavedReader reads indexed sessions without modifying the tuicr store.
 type SavedReader struct{ Stores []string }
+
+// FileFeedback reads local sessions in the feature checkout and its annotation
+// directories. Commit reviews use a separate detached checkout, not this scope.
+// Sessions remain available after branch changes and are not stack approvals.
+func (r SavedReader) FileFeedback(repo string) ([]FilesResult, error) {
+	repo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return nil, err
+	}
+	var results []FilesResult
+	seen := map[string]bool{}
+	for _, store := range r.Stores {
+		entries, err := readIndex(store)
+		if err != nil {
+			return nil, err
+		}
+		for _, rows := range entries {
+			for _, entry := range rows {
+				result, err := readFileFeedbackEntry(store, repo, entry)
+				if err != nil {
+					return nil, err
+				}
+				if result == nil {
+					continue
+				}
+				if seen[result.Session] {
+					continue
+				}
+				seen[result.Session] = true
+				results = append(results, *result)
+			}
+		}
+	}
+	slices.SortFunc(results, func(a, b FilesResult) int { return cmp.Compare(a.Session, b.Session) })
+	return results, nil
+}
 
 // Read returns nil only when no matching session exists. Corruption is an error.
 func (r SavedReader) Read(scope Stack, selector string) (*SavedReview, error) {
