@@ -75,11 +75,8 @@ type FileReviewer struct {
 // Review launches tuicr for working-tree files and reads its saved session.
 func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesResult, error) {
 	var result FilesResult
-	if options.All && (options.Untracked || options.Path != "") {
-		return result, fmt.Errorf("--all cannot be combined with --untracked or an explicit path")
-	}
-	if conflictingFileScope(options) {
-		return result, fmt.Errorf("--untracked cannot be combined with an explicit path")
+	if err := validateFileScope(options); err != nil {
+		return result, err
 	}
 	repo, err := r.Service.Repository.git(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -95,7 +92,7 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 		_ = lock.Close()
 	}()
 
-	if !options.All && !options.Untracked && options.Path == "" {
+	if reviewBranchFiles(options) {
 		return r.reviewBranchDiff(ctx, repo, options.Session, lock)
 	}
 	allFiles := options.All
@@ -287,6 +284,36 @@ func makeFileCommentsRepoRelative(saved *SavedReview, repo string) error {
 		comment["path"] = filepath.ToSlash(relative)
 	}
 	return nil
+}
+
+func validateFileScope(options FilesOptions) error {
+	if conflictingAllFileScope(options) {
+		return fmt.Errorf("--all cannot be combined with --untracked or an explicit path")
+	}
+	if conflictingFileScope(options) {
+		return fmt.Errorf("--untracked cannot be combined with an explicit path")
+	}
+	return nil
+}
+
+func conflictingAllFileScope(options FilesOptions) bool {
+	if !options.All {
+		return false
+	}
+	if options.Untracked {
+		return true
+	}
+	return options.Path != ""
+}
+
+func reviewBranchFiles(options FilesOptions) bool {
+	if options.All {
+		return false
+	}
+	if options.Untracked {
+		return false
+	}
+	return options.Path == ""
 }
 
 func conflictingFileScope(options FilesOptions) bool {
