@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // FilesOptions selects a working-tree file review.
@@ -94,7 +95,10 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 		_ = lock.Close()
 	}()
 
-	allFiles := reviewAllFiles(options)
+	if !options.All && !options.Untracked && options.Path == "" {
+		return r.reviewBranchDiff(ctx, repo, options.Session, lock)
+	}
+	allFiles := options.All
 	filePath := options.Path
 	if reviewUntrackedDirectory(options) {
 		filePath = "."
@@ -125,6 +129,50 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 	}
 	if reviewUntrackedDirectory(options) {
 		result.Path = "."
+	}
+	return fileReviewResult(result, saved)
+}
+
+// reviewBranchDiff uses Git's upstream merge-base without imposing the linear
+// history and stack-placement rules required by commit reviews.
+func (r FileReviewer) reviewBranchDiff(ctx context.Context, repo, selector string, lock *os.File) (FilesResult, error) {
+	result := FilesResult{Version: 1, Command: "files", Repo: repo}
+	repository := r.Service.Repository
+	view, _, err := repository.branchView(ctx)
+	if err != nil {
+		return result, err
+	}
+	head, err := repository.Resolve(ctx, "HEAD")
+	if err != nil {
+		return result, err
+	}
+	base, err := repository.git(ctx, "merge-base", "--all", view.Target, head)
+	if err != nil {
+		return result, err
+	}
+	if strings.Contains(base, "\n") {
+		return result, fmt.Errorf("review requires one merge-base with upstream")
+	}
+	history, err := repository.git(ctx, "rev-list", "--reverse", base+".."+head)
+	if err != nil {
+		return result, err
+	}
+	if history == "" {
+		return fileReviewResult(result, nil)
+	}
+	// Run at the root so invocation from a subdirectory keeps the same scope
+	// and saved-session identity.
+	r.Service.Repository.Dir = repo
+	if err := r.launch(ctx, []string{"tui", "--no-update-check", "--stdout", "--revisions", base + ".." + head}, lock); err != nil {
+		return result, err
+	}
+	scope := Stack{Repo: repo, Base: base, Tip: head, Commits: strings.Split(history, "\n")}
+	saved, err := r.Reader.Read(scope, selector)
+	if err != nil {
+		return result, err
+	}
+	if saved != nil {
+		result.Session = saved.Path
 	}
 	return fileReviewResult(result, saved)
 }
@@ -246,13 +294,6 @@ func conflictingFileScope(options FilesOptions) bool {
 		return false
 	}
 	return options.Path != ""
-}
-
-func reviewAllFiles(options FilesOptions) bool {
-	if options.Untracked {
-		return false
-	}
-	return options.Path == ""
 }
 
 func reviewUntrackedDirectory(options FilesOptions) bool {
