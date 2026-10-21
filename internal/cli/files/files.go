@@ -17,6 +17,7 @@ type Command struct {
 	Output    io.Writer
 	Terminal  io.Writer
 	Path      string
+	All       bool
 	Untracked bool
 	Session   string
 }
@@ -26,6 +27,7 @@ type Command struct {
 func New(svc review.Service, in io.Reader, out, term io.Writer) *cobra.Command {
 	c := &Command{Service: svc, Input: in, Output: out, Terminal: term}
 	cmd := &cobra.Command{Use: "files [<path>]", Short: "Review working-tree files with tuicr", Long: "Review working-tree files with tuicr. Without a path, review every tracked\nfile with tuicr tui --all-files. With a path, review that file or directory\nwith tuicr tui --file. With --untracked and no path, review untracked files\nin the current directory with tuicr tui --file . Address file feedback as new commits,\nlogically organized, not fixup commits.", Args: cobra.MaximumNArgs(1), RunE: c.RunE}
+	cmd.Flags().BoolVar(&c.All, "all", false, "Review every tracked file in the repository")
 	cmd.Flags().BoolVar(&c.Untracked, "untracked", false, "Review untracked files in the current directory (defaults path to .)")
 	cmd.Flags().StringVar(&c.Session, "session", "", "Select an exact saved session ID, slug, or indexed session path")
 	return cmd
@@ -38,7 +40,7 @@ func Install(parent *cobra.Command, svc review.Service, in io.Reader, out, term 
 
 // RunE runs the files review workflow.
 func (c *Command) RunE(cmd *cobra.Command, args []string) error {
-	options := review.FilesOptions{Session: c.Session, Untracked: c.Untracked}
+	options := review.FilesOptions{Session: c.Session, All: c.All, Untracked: c.Untracked}
 	if len(args) > 0 {
 		options.Path = args[0]
 		c.Path = args[0]

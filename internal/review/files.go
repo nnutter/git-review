@@ -12,6 +12,7 @@ import (
 // FilesOptions selects a working-tree file review.
 type FilesOptions struct {
 	Path      string
+	All       bool
 	Untracked bool
 	Session   string
 }
@@ -73,6 +74,9 @@ type FileReviewer struct {
 // Review launches tuicr for working-tree files and reads its saved session.
 func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesResult, error) {
 	var result FilesResult
+	if options.All && (options.Untracked || options.Path != "") {
+		return result, fmt.Errorf("--all cannot be combined with --untracked or an explicit path")
+	}
 	if conflictingFileScope(options) {
 		return result, fmt.Errorf("--untracked cannot be combined with an explicit path")
 	}

@@ -28,6 +28,7 @@ func TestFilesCommandArgMapping(t *testing.T) {
 		wantArgs string
 	}{
 		{"all files", []string{"files", "--json"}, "tui\n--no-update-check\n--stdout\n--all-files"},
+		{"explicit all files", []string{"files", "--all", "--json"}, "tui\n--no-update-check\n--stdout\n--all-files"},
 		{"single file", []string{"files", "file.txt", "--json"}, "tui\n--no-update-check\n--stdout\n--file\nfile.txt"},
 		{"untracked defaults to dot", []string{"files", "--untracked", "--json"}, "tui\n--no-update-check\n--stdout\n--file\n."},
 	} {
@@ -85,6 +86,8 @@ func TestFilesCommandTerminalAndErrors(t *testing.T) {
 		{"files", "a", "b", "--json"},
 		{"files", "--untracked", "file.txt", "--json"},
 		{"files", "--unknown", "--json"},
+		{"files", "--all", "--untracked", "--json"},
+		{"files", "--all", "file.txt", "--json"},
 	} {
 		out, terminal, err := execute(t, dir, args...)
 		require.Error(t, err)
