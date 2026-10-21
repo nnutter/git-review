@@ -16,15 +16,16 @@ type Entry struct {
 
 // Result is the shared input to JSON encoding and terminal rendering.
 type Result struct {
-	Version  int              `json:"version"`
-	Command  string           `json:"command"`
-	Status   string           `json:"status"`
-	View     Snapshot         `json:"view"`
-	Entries  []Entry          `json:"entries"`
-	Active   []Attempt        `json:"active"`
-	Decision *Decision        `json:"decision,omitzero"`
-	Feedback []FeedbackRecord `json:"feedback,omitempty"`
-	Summary  []StateCount     `json:"summary,omitempty"`
+	Version      int              `json:"version"`
+	Command      string           `json:"command"`
+	Status       string           `json:"status"`
+	View         Snapshot         `json:"view"`
+	Entries      []Entry          `json:"entries"`
+	Active       []Attempt        `json:"active"`
+	Decision     *Decision        `json:"decision,omitzero"`
+	Feedback     []FeedbackRecord `json:"feedback,omitempty"`
+	FileFeedback []FilesResult    `json:"fileFeedback,omitempty"`
+	Summary      []StateCount     `json:"summary,omitempty"`
 }
 
 // FeedbackRecord retains captured scope and marks obsolete or addressed notes.
@@ -67,6 +68,27 @@ func countStates(view Snapshot, state State) []StateCount {
 		}
 	}
 	return counts
+}
+
+func appendCommitFeedback(result *Result, state State) error {
+	for _, attempt := range state.Attempts {
+		if len(attempt.Review) == 0 {
+			continue
+		}
+		var saved SavedReview
+		if err := json.Unmarshal(attempt.Review, &saved); err != nil {
+			return fmt.Errorf("invalid stored review %s: %w", attempt.ID, err)
+		}
+		if saved.Status() != "feedback" {
+			continue
+		}
+		historical := !currentAttempt(result.View, state, attempt)
+		result.Feedback = append(result.Feedback, FeedbackRecord{Attempt: attempt, Historical: historical})
+		if !historical {
+			result.Status = "pending"
+		}
+	}
+	return nil
 }
 
 // Service coordinates the current branch with its durable review history.
@@ -113,9 +135,9 @@ func (s Service) Approve(ctx context.Context, first, last string) (Result, error
 	return result, nil
 }
 
-// Feedback reads every persisted attempt with notes without changing either store.
+// Feedback reads saved commit and file feedback without changing either store.
 func (s Service) Feedback(ctx context.Context) (Result, error) {
-	view, err := s.Repository.Snapshot(ctx)
+	view, repo, err := s.Repository.checkoutView(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -123,23 +145,24 @@ func (s Service) Feedback(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Version: 1, Command: "feedback", Status: "idle", View: view, Entries: []Entry{}, Active: activeAttempts(state)}
-	for _, attempt := range state.Attempts {
-		if len(attempt.Review) == 0 {
-			continue
-		}
-		var saved SavedReview
-		if err := json.Unmarshal(attempt.Review, &saved); err != nil {
-			return Result{}, fmt.Errorf("invalid stored review %s: %w", attempt.ID, err)
-		}
-		if saved.Status() != "feedback" {
-			continue
-		}
-		historical := !currentAttempt(view, state, attempt)
-		result.Feedback = append(result.Feedback, FeedbackRecord{Attempt: attempt, Historical: historical})
-		if !historical {
-			result.Status = "pending"
-		}
+	view, err = s.feedbackView(ctx, view, state)
+	if err != nil {
+		return Result{}, err
+	}
+	reader, err := DefaultSavedReader()
+	if err != nil {
+		return Result{}, err
+	}
+	files, err := reader.FileFeedback(repo)
+	if err != nil {
+		return Result{}, err
+	}
+	result := Result{Version: 1, Command: "feedback", Status: "idle", View: view, Entries: []Entry{}, Active: activeAttempts(state), FileFeedback: files}
+	if len(files) > 0 {
+		result.Status = "pending"
+	}
+	if err := appendCommitFeedback(&result, state); err != nil {
+		return Result{}, err
 	}
 	return result, nil
 }
@@ -174,6 +197,25 @@ func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 		}
 	}
 	return result, nil
+}
+
+// File annotation does not require an upstream or linear commit history.
+// Preserve stack validation when there are commit-review attempts to classify.
+func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (Snapshot, error) {
+	if len(state.Attempts) > 0 {
+		return s.Repository.Snapshot(ctx)
+	}
+	head, err := s.Repository.Resolve(ctx, "HEAD")
+	if err != nil {
+		return Snapshot{}, err
+	}
+	target, err := s.Repository.git(ctx, "for-each-ref", "--format=%(upstream)", "refs/heads/"+view.Branch)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	view.Head = head
+	view.Target = target
+	return view, nil
 }
 
 func (s Service) selectRange(ctx context.Context, view Snapshot, first, last string) ([]Stack, error) {

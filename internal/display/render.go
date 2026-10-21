@@ -181,6 +181,14 @@ func renderFeedbackResult(result review.Result) (string, error) {
 	if err := renderFeedback(&out, result.Feedback); err != nil {
 		return "", err
 	}
+	for _, file := range result.FileFeedback {
+		fmt.Fprintln(&out, "File feedback:")
+		text, err := renderFilesResult(file)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintln(&out, text)
+	}
 	if result.Status == "idle" {
 		fmt.Fprintln(&out, "No current saved feedback.")
 	} else {

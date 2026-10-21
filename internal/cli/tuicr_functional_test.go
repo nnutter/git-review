@@ -21,7 +21,8 @@ func realTuicrEnvironment(t *testing.T) []string {
 	}
 	_, err := exec.LookPath("tuicr")
 	require.NoError(t, err, "functional tests require tuicr on PATH")
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	overrides := map[string]string{
 		"HOME": home, "XDG_DATA_HOME": filepath.Join(home, "data"), "XDG_CACHE_HOME": filepath.Join(home, "cache"), "XDG_CONFIG_HOME": filepath.Join(home, "config"),
 		"TERM": "xterm-256color", "COLORTERM": "truecolor", "GIT_CONFIG_GLOBAL": os.DevNull, "GIT_CONFIG_NOSYSTEM": "1",

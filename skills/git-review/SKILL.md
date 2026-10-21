@@ -75,11 +75,19 @@ Inspect the JSON result, not only the exit code.
 Stop on command errors or an unsupported output version.
 The supported output version is `1`.
 
-Read the `feedback` array rather than `entries`.
-The array is absent when no saved notes exist.
+Read both `feedback` and `fileFeedback`, not `entries`.
+Each array is absent when it has no records.
+The `feedback` array contains commit-review feedback.
 Each record contains an `attempt` and a `historical` boolean.
 
-For each selected attempt, read:
+The `fileFeedback` array contains saved file reviews with `"command":"files"`.
+Read each result’s `review.comments` and `review.sessionNotes`.
+These repository-scoped sessions can predate the current branch state.
+Check whether their notes still apply before changing code.
+Address file feedback as new commits, not `fixup!`, `amend!`, or `reword!` commits.
+Do not treat file feedback as a commit-review attempt or stack approval.
+
+For each selected commit-review attempt, read:
 
 - `id`: identifies the feedback attempt.
 - `stack`: contains the captured commits, tip, subject, and optional Change-Id.

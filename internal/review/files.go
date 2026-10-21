@@ -75,11 +75,8 @@ type FileReviewer struct {
 // Review launches tuicr for working-tree files and reads its saved session.
 func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesResult, error) {
 	var result FilesResult
-	if options.All && (options.Untracked || options.Path != "") {
-		return result, fmt.Errorf("--all cannot be combined with --untracked or an explicit path")
-	}
-	if conflictingFileScope(options) {
-		return result, fmt.Errorf("--untracked cannot be combined with an explicit path")
+	if err := validateFileScope(options); err != nil {
+		return result, err
 	}
 	repo, err := r.Service.Repository.git(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -95,7 +92,7 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 		_ = lock.Close()
 	}()
 
-	if !options.All && !options.Untracked && options.Path == "" {
+	if reviewBranchFiles(options) {
 		return r.reviewBranchDiff(ctx, repo, options.Session, lock)
 	}
 	allFiles := options.All
@@ -129,50 +126,6 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 	}
 	if reviewUntrackedDirectory(options) {
 		result.Path = "."
-	}
-	return fileReviewResult(result, saved)
-}
-
-// reviewBranchDiff uses Git's upstream merge-base without imposing the linear
-// history and stack-placement rules required by commit reviews.
-func (r FileReviewer) reviewBranchDiff(ctx context.Context, repo, selector string, lock *os.File) (FilesResult, error) {
-	result := FilesResult{Version: 1, Command: "files", Repo: repo}
-	repository := r.Service.Repository
-	view, _, err := repository.branchView(ctx)
-	if err != nil {
-		return result, err
-	}
-	head, err := repository.Resolve(ctx, "HEAD")
-	if err != nil {
-		return result, err
-	}
-	base, err := repository.git(ctx, "merge-base", "--all", view.Target, head)
-	if err != nil {
-		return result, err
-	}
-	if strings.Contains(base, "\n") {
-		return result, fmt.Errorf("review requires one merge-base with upstream")
-	}
-	history, err := repository.git(ctx, "rev-list", "--reverse", base+".."+head)
-	if err != nil {
-		return result, err
-	}
-	if history == "" {
-		return fileReviewResult(result, nil)
-	}
-	// Run at the root so invocation from a subdirectory keeps the same scope
-	// and saved-session identity.
-	r.Service.Repository.Dir = repo
-	if err := r.launch(ctx, []string{"tui", "--no-update-check", "--stdout", "--revisions", base + ".." + head}, lock); err != nil {
-		return result, err
-	}
-	scope := Stack{Repo: repo, Base: base, Tip: head, Commits: strings.Split(history, "\n")}
-	saved, err := r.Reader.Read(scope, selector)
-	if err != nil {
-		return result, err
-	}
-	if saved != nil {
-		result.Session = saved.Path
 	}
 	return fileReviewResult(result, saved)
 }
@@ -223,6 +176,50 @@ func (r FileReviewer) readReview(path, diffSource, selector string) (*SavedRevie
 		return nil, "", err
 	}
 	return r.Reader.ReadFile(root, diffSource, selector)
+}
+
+// reviewBranchDiff uses Git's upstream merge-base without imposing the linear
+// history and stack-placement rules required by commit reviews.
+func (r FileReviewer) reviewBranchDiff(ctx context.Context, repo, selector string, lock *os.File) (FilesResult, error) {
+	result := FilesResult{Version: 1, Command: "files", Repo: repo}
+	repository := r.Service.Repository
+	view, _, err := repository.branchView(ctx)
+	if err != nil {
+		return result, err
+	}
+	head, err := repository.Resolve(ctx, "HEAD")
+	if err != nil {
+		return result, err
+	}
+	base, err := repository.git(ctx, "merge-base", "--all", view.Target, head)
+	if err != nil {
+		return result, err
+	}
+	if strings.Contains(base, "\n") {
+		return result, fmt.Errorf("review requires one merge-base with upstream")
+	}
+	history, err := repository.git(ctx, "rev-list", "--reverse", base+".."+head)
+	if err != nil {
+		return result, err
+	}
+	if history == "" {
+		return fileReviewResult(result, nil)
+	}
+	// Run at the root so invocation from a subdirectory keeps the same scope
+	// and saved-session identity.
+	r.Service.Repository.Dir = repo
+	if err := r.launch(ctx, []string{"tui", "--no-update-check", "--stdout", "--revisions", base + ".." + head}, lock); err != nil {
+		return result, err
+	}
+	scope := Stack{Repo: repo, Base: base, Tip: head, Commits: strings.Split(history, "\n")}
+	saved, err := r.Reader.Read(scope, selector)
+	if err != nil {
+		return result, err
+	}
+	if saved != nil {
+		result.Session = saved.Path
+	}
+	return fileReviewResult(result, saved)
 }
 
 // Tuicr keys --file sessions by the canonical parent of a file or by the
@@ -287,6 +284,36 @@ func makeFileCommentsRepoRelative(saved *SavedReview, repo string) error {
 		comment["path"] = filepath.ToSlash(relative)
 	}
 	return nil
+}
+
+func validateFileScope(options FilesOptions) error {
+	if conflictingAllFileScope(options) {
+		return fmt.Errorf("--all cannot be combined with --untracked or an explicit path")
+	}
+	if conflictingFileScope(options) {
+		return fmt.Errorf("--untracked cannot be combined with an explicit path")
+	}
+	return nil
+}
+
+func conflictingAllFileScope(options FilesOptions) bool {
+	if !options.All {
+		return false
+	}
+	if options.Untracked {
+		return true
+	}
+	return options.Path != ""
+}
+
+func reviewBranchFiles(options FilesOptions) bool {
+	if options.All {
+		return false
+	}
+	if options.Untracked {
+		return false
+	}
+	return options.Path == ""
 }
 
 func conflictingFileScope(options FilesOptions) bool {

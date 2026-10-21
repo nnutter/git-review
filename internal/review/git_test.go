@@ -3,6 +3,7 @@ package review
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,7 +21,8 @@ func gitTest(t *testing.T, dir string, args ...string) string {
 
 func testRepo(t *testing.T) Repository {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	gitTest(t, dir, "init", "-b", "main")
 	gitTest(t, dir, "config", "user.name", "Test")
 	gitTest(t, dir, "config", "user.email", "test@example.com")

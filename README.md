@@ -171,9 +171,9 @@ git-review feedback
 git-review feedback --json
 ```
 
-This read-only command returns notes persisted by git-review, including reviews completed outside an agent session.
+This read-only command returns commit-review notes persisted by git-review and file-review notes from tuicr, including existing saved sessions.
 It does not launch tuicr, recover an attempt, or change either review store.
-Interrupted sessions whose notes were not captured by git-review still require explicit interactive recovery.
+Interrupted commit-review sessions whose notes were not captured by git-review still require explicit interactive recovery.
 
 Feedback results use the versioned result envelope, with `"command":"feedback"`.
 The optional `feedback` array contains records with these fields:
@@ -189,9 +189,16 @@ Superseded attempts, changed or removed stacks, and addressed attempts remain hi
 The command does not infer that historical feedback needs another fix or that a changed stack resolved it.
 Malformed stored review data is an error rather than silently omitted feedback.
 
-The result is `pending` when current saved feedback exists and `idle` otherwise.
+The optional `fileFeedback` array contains file-review results with `"command":"files"`, the saved session path, comments, and session notes.
+It includes local sessions in the feature checkout and its annotation directories, not commit-review sessions in the detached checkout.
+These records are repository-scoped and remain visible after branch changes while their tuicr sessions contain notes.
+They do not imply current stack feedback or authorize fixup commits.
+Address them as new commits, logically organized and sized.
+Resolve or remove obsolete notes in tuicr when they no longer apply.
+
+The result is `pending` when current commit feedback or any saved file feedback exists and `idle` otherwise.
 An `idle` result can still include historical records.
-The `feedback` field is omitted when no saved notes exist, and `entries` is empty.
+Each feedback array is omitted when it has no records, and `entries` is empty.
 Active attempts remain visible in `active`, but collecting feedback does not resume them.
 
 ### Review a stack
@@ -305,7 +312,8 @@ Use `--session` to select an exact saved session when several file reviews match
 File reviews run in the feature checkout, not the detached review worktree.
 `--all`, explicit paths, and `--untracked` do not require a configured upstream.
 They hold the same repository-wide worktree lock as `commits` reviews, so `status --is-reviewing` reports true during either review.
-They do not create git-review attempts and do not affect `status` counts or `feedback` records.
+They do not create git-review attempts or affect `status` counts.
+Retrieve their comments and session notes with `git-review feedback`, in the separate `fileFeedback` JSON array or the terminal “File feedback” section.
 `approve` applies only to commit stacks, not file reviews.
 
 Successful `files` output uses `"command":"files"` to distinguish it from `"command":"commits"`.
@@ -368,7 +376,8 @@ Successful results other than `status` contain:
 | `entries` | Unresolved stacks, or the stacks selected by approval/review |
 | `active` | Persisted active attempts |
 | `decision` | Required explicit choice, when present |
-| `feedback` | Current and historical saved feedback records for the feedback command, when notes exist |
+| `feedback` | Current and historical commit-review feedback records, when notes exist |
+| `fileFeedback` | Saved file-review results from tuicr, when notes exist |
 
 Needs-review outcomes are `pending` or `idle`.
 Review outcomes include `approved`, `feedback`, `incomplete`, `decision_required`, `cancelled`, `idle`, `range_complete`, and `no_waiting`.

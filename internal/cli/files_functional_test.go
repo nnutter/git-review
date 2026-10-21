@@ -15,12 +15,14 @@ func TestRealTuicrFileScopes(t *testing.T) {
 	env := realTuicrEnvironment(t)
 	binary := buildGitReview(t)
 	for _, tc := range []struct {
-		name     string
-		args     []string
-		cwd      string
-		previous bool
+		name       string
+		args       []string
+		cwd        string
+		previous   bool
+		noUpstream bool
 	}{
 		{name: "nested file", args: []string{"src/nested.txt"}},
+		{name: "annotation without upstream", args: []string{"src/nested.txt"}, noUpstream: true},
 		{name: "nested file after root review", args: []string{"src/nested.txt"}, previous: true},
 		{name: "nested directory", args: []string{"src"}, previous: true},
 		{name: "untracked from subdirectory", args: []string{"--untracked"}, cwd: "src", previous: true},
@@ -37,11 +39,15 @@ func TestRealTuicrFileScopes(t *testing.T) {
 			if tc.previous {
 				reviewRealFile(t, binary, dir, env, "feature.txt", "Prior root feedback", "feature.txt")
 			}
+			if tc.noUpstream {
+				git(t, dir, "branch", "--unset-upstream")
+			}
 			result := reviewRealFile(t, binary, filepath.Join(dir, tc.cwd), env, "nested.txt", "Nested feedback", tc.args...)
 			require.Equal(t, dir, result.Repo)
 			require.Len(t, result.Review.Comments, 1)
 			require.Equal(t, "Nested feedback", result.Review.Comments[0]["content"])
 			require.Equal(t, "src/nested.txt", result.Review.Comments[0]["path"])
+			checkRealFileFeedback(t, binary, filepath.Join(dir, tc.cwd), env, result)
 		})
 	}
 }
@@ -88,8 +94,40 @@ func TestRealTuicrBranchFiles(t *testing.T) {
 			require.Len(t, result.Review.Comments, 1)
 			require.Equal(t, "Branch feedback", result.Review.Comments[0]["content"])
 			require.Equal(t, "feature.txt", result.Review.Comments[0]["path"])
+			git(t, dir, "commit", "--allow-empty", "-m", "Advance branch after file review")
+			checkRealFileFeedback(t, binary, filepath.Join(dir, tc.cwd), env, result)
 		})
 	}
+}
+
+func checkRealFileFeedback(t *testing.T, binary, dir string, env []string, reviewed review.FilesResult) {
+	t.Helper()
+	before, err := os.ReadFile(reviewed.Session)
+	require.NoError(t, err)
+	out := runRealCommand(t, binary, dir, env, "feedback", "--json")
+	var result struct {
+		Status       string                  `json:"status"`
+		Feedback     []review.FeedbackRecord `json:"feedback"`
+		FileFeedback []review.FilesResult    `json:"fileFeedback"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, "pending", result.Status)
+	require.Empty(t, result.Feedback, "file feedback must not become a stack attempt")
+	var found bool
+	for _, file := range result.FileFeedback {
+		if file.Session == reviewed.Session {
+			found = true
+			require.Equal(t, "files", file.Command)
+			require.Equal(t, reviewed.Review, file.Review)
+		}
+	}
+	require.True(t, found, "feedback must include the saved file review")
+	terminal := runRealCommand(t, binary, dir, env, "feedback")
+	require.Contains(t, terminal, "File feedback:")
+	require.Contains(t, terminal, reviewed.Review.Comments[0]["content"])
+	after, err := os.ReadFile(reviewed.Session)
+	require.NoError(t, err)
+	require.Equal(t, before, after, "feedback must not change the tuicr session")
 }
 
 func reviewRealFile(t *testing.T, binary, dir string, env []string, file, feedback string, args ...string) review.FilesResult {
