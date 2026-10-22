@@ -32,6 +32,7 @@ func TestSnapshotPatchCache(t *testing.T) {
 
 	// Appending ordinary content reuses existing fingerprints, including empty
 	// diffs. A cache keyed solely by branch HEAD would miss all three stacks.
+	require.NoError(t, os.WriteFile(filepath.Join(r.Dir, ".gitattributes"), []byte("another -diff\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(r.Dir, "another"), []byte("new\n"), 0o600))
 	gitTest(t, r.Dir, "add", "another")
 	gitTest(t, r.Dir, "commit", "-m", "Another feature")

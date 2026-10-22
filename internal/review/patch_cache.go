@@ -15,6 +15,7 @@ import (
 // the fingerprint version, immutable endpoints, and Git's effective diff inputs.
 type patchCache struct {
 	dir, context string
+	repo         string
 	writable     bool
 }
 
@@ -26,31 +27,8 @@ func newPatchCache(ctx context.Context, r Repository, view Snapshot, repo string
 	if len(view.Stacks) == 0 {
 		return nil
 	}
-	// Git resolves attributes from the worktree, index, info/attributes, and
-	// global/system sources. Ask Git rather than trying to discover these files.
 	root := r
 	root.Dir = repo
-	var pairs strings.Builder
-	for _, stack := range view.Stacks {
-		fmt.Fprintf(&pairs, "%s %s\n", stack.Base, stack.Tip)
-	}
-	paths, err := root.gitInput(ctx, pairs.String(), "diff-tree", "--stdin", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z")
-	if err != nil {
-		r.logger().Debug("Patch cache unavailable", "error", err)
-		return nil
-	}
-	names := strings.Split(strings.TrimSuffix(paths, "\x00"), "\x00")
-	slices.Sort(names)
-	names = slices.Compact(names)
-	input := ""
-	if paths != "" {
-		input = strings.Join(names, "\x00") + "\x00"
-	}
-	attributes, err := root.gitInput(ctx, input, "check-attr", "--all", "--stdin", "-z")
-	if err != nil {
-		r.logger().Debug("Patch cache unavailable", "error", err)
-		return nil
-	}
 	config, err := root.gitOutput(ctx, "config", "--null", "--list")
 	if err != nil {
 		r.logger().Debug("Patch cache unavailable", "error", err)
@@ -61,8 +39,8 @@ func newPatchCache(ctx context.Context, r Repository, view Snapshot, repo string
 		r.logger().Debug("Patch cache unavailable", "error", err)
 		return nil
 	}
-	inputs := []string{"patch-v2", version, config, attributes, os.Getenv("GIT_DIFF_OPTS"), os.Getenv("GIT_ATTR_SOURCE")}
-	cache := &patchCache{dir: patchCachePath(view), context: fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(inputs, "\x00"))))}
+	inputs := []string{"patch-context-v3", version, config, os.Getenv("GIT_DIFF_OPTS"), os.Getenv("GIT_ATTR_SOURCE")}
+	cache := &patchCache{dir: patchCachePath(view), repo: repo, context: fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(inputs, "\x00"))))}
 	if err := os.MkdirAll(cache.dir, 0o700); err != nil {
 		r.logger().Debug("Patch cache is read-only", "error", err)
 	} else {
@@ -75,7 +53,14 @@ func (c *patchCache) hash(ctx context.Context, r Repository, base, tip string) (
 	if c == nil {
 		return r.patchHash(ctx, base, tip)
 	}
-	key := fmt.Sprintf("%x.patch", sha256.Sum256([]byte(c.context+"\x00"+base+"\x00"+tip)))
+	root := r
+	root.Dir = c.repo
+	attributes, err := patchAttributes(ctx, root, base, tip)
+	if err != nil {
+		r.logger().Debug("Patch cache unavailable", "error", err)
+		return r.patchHash(ctx, base, tip)
+	}
+	key := fmt.Sprintf("%x.patch", sha256.Sum256([]byte(c.context+"\x00"+attributes+"\x00"+base+"\x00"+tip)))
 	path := filepath.Join(c.dir, key)
 	if hash, ok := readPatchCache(path); ok {
 		r.logger().Debug("Patch cache hit", "tip", tip)
@@ -94,6 +79,23 @@ func (c *patchCache) hash(ctx context.Context, r Repository, base, tip string) (
 		}
 	}
 	return hash, nil
+}
+
+// Attribute inputs belong to one stack, not the snapshot that selected it.
+// Git resolves worktree, index, info, and global/system attribute sources.
+func patchAttributes(ctx context.Context, r Repository, base, tip string) (string, error) {
+	paths, err := r.gitOutput(ctx, "diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", base, tip)
+	if err != nil {
+		return "", err
+	}
+	names := strings.Split(strings.TrimSuffix(paths, "\x00"), "\x00")
+	slices.Sort(names)
+	names = slices.Compact(names)
+	input := ""
+	if paths != "" {
+		input = strings.Join(names, "\x00") + "\x00"
+	}
+	return r.gitInput(ctx, input, "check-attr", "--all", "--stdin", "-z")
 }
 
 func readPatchCache(path string) (string, bool) {
