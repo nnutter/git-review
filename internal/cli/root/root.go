@@ -8,6 +8,8 @@ import (
 	"os"
 	"syscall"
 
+	charmlog "charm.land/log/v2"
+
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
@@ -28,6 +30,7 @@ type Command struct {
 	Output      io.Writer
 	Terminal    io.Writer
 	JSON        bool
+	Debug       bool
 	outputError error
 }
 
@@ -67,7 +70,19 @@ func Execute(ctx context.Context, args []string, dir string, input io.Reader, ou
 }
 
 func (c *Command) build() *cobra.Command {
+	writer := c.Terminal
+	if writer == nil {
+		writer = io.Discard
+	}
+	logger := charmlog.New(writer)
+	c.Service.Repository.Logger = logger
 	root := &cobra.Command{Use: "git-review", Short: "Review feature-branch commit stacks with tuicr", Long: "git-review tracks review of exact commit stacks against the configured Git upstream.\nApproval never transfers to rewritten commits or added fixups."}
+	root.PersistentPreRun = func(_ *cobra.Command, _ []string) {
+		if c.Debug {
+			logger.SetLevel(charmlog.DebugLevel)
+		}
+	}
+	root.PersistentFlags().BoolVar(&c.Debug, "debug", false, "Write diagnostic logs to stderr")
 	root.PersistentFlags().BoolVar(&c.JSON, "json", c.JSON, "Emit a versioned JSON result without interactive prompts")
 	approve.Install(root, c.Service, c.Output)
 	commits.Install(root, c.Service, c.Input, c.Output, c.Terminal)

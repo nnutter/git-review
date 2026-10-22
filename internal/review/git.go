@@ -6,12 +6,15 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"charm.land/log/v2"
 )
 
 // Stack identifies an original commit and its adjacent feedback commits.
@@ -103,7 +106,12 @@ type Snapshot struct {
 }
 
 // Repository executes Git in the source checkout.
-type Repository struct{ Dir string }
+type Repository struct {
+	Dir    string
+	Logger *log.Logger
+}
+
+var quietLogger = log.New(io.Discard)
 
 // Resolve accepts a commit reference but never interprets it as an option.
 func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
@@ -112,6 +120,8 @@ func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
 
 // Snapshot requires an upstream and a single, linear feature-branch range.
 func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
+	started := time.Now()
+	defer func() { r.logger().Debug("Repository snapshot completed", "elapsed", time.Since(started)) }()
 	view, repo, err := r.branchView(ctx)
 	if err != nil {
 		return view, err
@@ -205,6 +215,8 @@ func (r Repository) git(ctx context.Context, args ...string) (string, error) {
 }
 
 func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
+	started := time.Now()
+	defer func() { r.logger().Debug("Git command completed", "args", args, "elapsed", time.Since(started)) }()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -221,6 +233,13 @@ func (r Repository) gitOutput(ctx context.Context, args ...string) (string, erro
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return string(out), nil
+}
+
+func (r Repository) logger() *log.Logger {
+	if r.Logger != nil {
+		return r.Logger
+	}
+	return quietLogger
 }
 
 // patchHash fingerprints the aggregate diff, not commit metadata. Empty diffs

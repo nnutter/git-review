@@ -169,6 +169,17 @@ func TestStatusWithoutReviewHistory(t *testing.T) {
 	require.Equal(t, "No reviews pending.\n", filtered)
 }
 
+func TestStatusDebugLogsStayOffJSON(t *testing.T) {
+	dir := featureRepo(t)
+	out, terminal, err := execute(t, dir, "status", "--json", "--debug")
+	require.NoError(t, err)
+	var result review.Result
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, "status", result.Command)
+	require.Contains(t, terminal, "Repository snapshot completed")
+	require.NotContains(t, out, "elapsed")
+}
+
 func TestStatusOutsideGitRepository(t *testing.T) {
 	binary := buildGitReview(t)
 	dir := t.TempDir()
