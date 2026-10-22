@@ -129,30 +129,7 @@ func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
 func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 	started := time.Now()
 	defer func() { r.logger().Debug("Repository snapshot completed", "elapsed", time.Since(started)) }()
-	view, repo, err := r.branchView(ctx)
-	if err != nil {
-		return view, err
-	}
-	view.Head, err = r.Resolve(ctx, "HEAD")
-	if err != nil {
-		return view, err
-	}
-	targetSHA, err := r.Resolve(ctx, view.Target)
-	if err != nil {
-		return view, err
-	}
-	view.Base, err = r.git(ctx, "merge-base", "--all", view.Head, targetSHA)
-	if err != nil {
-		return view, err
-	}
-	if strings.Contains(view.Base, "\n") {
-		return view, fmt.Errorf("review requires one merge-base with upstream")
-	}
-	history, err := readHistory(ctx, r, repo, view.Base, view.Head)
-	if err != nil {
-		return view, err
-	}
-	view.Stacks, err = r.stacks(repo, view.Base, history)
+	view, repo, err := r.stackView(ctx)
 	if err != nil {
 		return view, err
 	}
@@ -320,6 +297,37 @@ func (r Repository) reviewBranch(ctx context.Context) (string, error) {
 		return branch, nil
 	}
 	return "", err
+}
+
+func (r Repository) stackView(ctx context.Context) (Snapshot, string, error) {
+	view, repo, err := r.branchView(ctx)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Head, err = r.Resolve(ctx, "HEAD")
+	if err != nil {
+		return view, repo, err
+	}
+	targetSHA, err := r.Resolve(ctx, view.Target)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Base, err = r.git(ctx, "merge-base", "--all", view.Head, targetSHA)
+	if err != nil {
+		return view, repo, err
+	}
+	if strings.Contains(view.Base, "\n") {
+		return view, repo, fmt.Errorf("review requires one merge-base with upstream")
+	}
+	history, err := readHistory(ctx, r, repo, view.Base, view.Head)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Stacks, err = r.stacks(repo, view.Base, history)
+	if err != nil {
+		return view, repo, err
+	}
+	return view, repo, nil
 }
 
 func (r Repository) stacks(repo, base string, history []historyCommit) ([]Stack, error) {
