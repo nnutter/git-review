@@ -141,11 +141,11 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 	if strings.Contains(view.Base, "\n") {
 		return view, fmt.Errorf("review requires one merge-base with upstream")
 	}
-	history, err := r.git(ctx, "log", "--reverse", "--format=%H%x00%P%x00%s", view.Base+".."+view.Head)
+	history, err := readHistory(ctx, r, repo, view.Base, view.Head)
 	if err != nil {
 		return view, err
 	}
-	view.Stacks, err = r.stacks(ctx, repo, view.Base, history)
+	view.Stacks, err = r.stacks(repo, view.Base, history)
 	if err != nil {
 		return view, err
 	}
@@ -172,11 +172,7 @@ func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
 	return view, repo, nil
 }
 
-func (r Repository) changeID(ctx context.Context, sha string, ids map[string]bool) (string, error) {
-	id, err := r.git(ctx, "show", "-s", "--format=%(trailers:key=Change-Id,valueonly)", sha)
-	if err != nil {
-		return "", err
-	}
+func changeID(sha, id string, ids map[string]bool) (string, error) {
 	if id == "" {
 		return "", nil
 	}
@@ -313,36 +309,32 @@ func (r Repository) reviewBranch(ctx context.Context) (string, error) {
 	return "", err
 }
 
-func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]Stack, error) {
+func (r Repository) stacks(repo, base string, history []historyCommit) ([]Stack, error) {
 	stacks := []Stack{}
-	if history == "" {
+	if len(history) == 0 {
 		return stacks, nil
 	}
 	parent := base
 	ids := map[string]bool{}
 	targets := map[string][]int{}
-	for row := range strings.SplitSeq(history, "\n") {
-		fields := strings.SplitN(row, "\x00", 3)
-		if len(fields) != 3 {
-			return nil, fmt.Errorf("invalid Git history record")
-		}
-		if fields[1] != parent {
+	for _, commit := range history {
+		if commit.parent != parent {
 			return nil, fmt.Errorf("review requires linear feature history; resolve merges first")
 		}
-		sha, subject := fields[0], fields[2]
+		sha, subject := commit.sha, commit.subject
 		if subject == "" {
 			return nil, fmt.Errorf("commit %s has an empty subject", sha)
 		}
 		if match := feedbackSubject.FindStringSubmatch(subject); match != nil {
 			if !tryAppendFeedback(stacks, targets, sha, match[1], match[2]) {
-				id, err := r.changeID(ctx, sha, ids)
+				id, err := changeID(sha, commit.changeID, ids)
 				if err != nil {
 					return nil, err
 				}
 				stacks = append(stacks, Stack{Repo: repo, Commits: []string{sha}, Base: parent, Tip: sha, Subject: subject, Key: sha, ChangeID: id})
 			}
 		} else {
-			id, err := r.changeID(ctx, sha, ids)
+			id, err := changeID(sha, commit.changeID, ids)
 			if err != nil {
 				return nil, err
 			}
