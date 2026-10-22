@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -47,15 +48,33 @@ func benchmarkRepository(b *testing.B, commits int, fixups bool) Repository {
 	return Repository{Dir: dir}
 }
 
+func benchmarkCacheModes(b *testing.B, r Repository, operation func() error) {
+	b.Helper()
+	for _, mode := range []string{"cold", "warm"} {
+		b.Run(mode, func(b *testing.B) {
+			view, err := r.Snapshot(b.Context())
+			require.NoError(b, err)
+			b.ReportAllocs()
+			for b.Loop() {
+				if mode == "cold" {
+					b.StopTimer()
+					require.NoError(b, os.RemoveAll(patchCachePath(view)))
+					b.StartTimer()
+				}
+				require.NoError(b, operation())
+			}
+		})
+	}
+}
+
 func BenchmarkSnapshot(b *testing.B) {
 	for _, commits := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("commits=%d", commits), func(b *testing.B) {
 			r := benchmarkRepository(b, commits, false)
-			b.ReportAllocs()
-			for b.Loop() {
+			benchmarkCacheModes(b, r, func() error {
 				_, err := r.Snapshot(b.Context())
-				require.NoError(b, err)
-			}
+				return err
+			})
 		})
 	}
 }
@@ -89,11 +108,10 @@ func BenchmarkStatus(b *testing.B) {
 				require.NoError(b, err)
 			}
 			svc := Service{Repository: r}
-			b.ReportAllocs()
-			for b.Loop() {
+			benchmarkCacheModes(b, r, func() error {
 				_, err := svc.Status(b.Context(), false)
-				require.NoError(b, err)
-			}
+				return err
+			})
 		})
 	}
 }

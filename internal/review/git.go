@@ -156,9 +156,10 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return view, err
 	}
+	cache := newPatchCache(ctx, r, view, repo)
 	for i := range view.Stacks {
 		stack := &view.Stacks[i]
-		stack.PatchHash, err = r.patchHash(ctx, stack.Base, stack.Tip)
+		stack.PatchHash, err = cache.hash(ctx, r, stack.Base, stack.Tip)
 		if err != nil {
 			return view, err
 		}
