@@ -18,6 +18,10 @@ alias = "test"
 description = "Run tests (with the race detector)"
 run = ["go test -race -shuffle=on ./...", "node --test pi/extensions/*/tests/*.test.ts"]
 
+[tasks.benchmarks]
+description = "Measure snapshot and status performance (not race-instrumented)"
+run = "go test ./internal/review -run '^$' -bench 'Benchmark(Snapshot|Status)$' -benchmem -benchtime=1x -count=5 -timeout=20m"
+
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
 env.GIT_REVIEW_REAL_TUICR = "1"
