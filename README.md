@@ -121,6 +121,8 @@ Each commit inherits its stack's current state.
 Historical attempts and commits removed from the feature range do not contribute to the counts.
 Stacks with changed content need another review and count as `needs_review` until a new attempt records another state.
 Unchanged content can retain approval or pending feedback after commit hashes change.
+A newer stack above a stack with feedback shows that the feedback was addressed, so `status` reports the earlier stack as `needs_review` and omits its saved notes.
+`git-review feedback` still returns those notes.
 
 The `summary` array always includes all five states, even when their counts are zero.
 It uses this order: `needs_review`, `reviewing`, `feedback`, `incomplete`, `approved`.
