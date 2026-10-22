@@ -17,6 +17,7 @@ type Command struct {
 	Input          io.Reader
 	Output         io.Writer
 	Terminal       io.Writer
+	Oneline        bool
 	Patch          bool
 	IgnoreAllSpace bool
 	Stat           bool
@@ -31,10 +32,11 @@ func New(svc review.Service, in io.Reader, out, term io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Show commits after the upstream in oldest-first order",
-		Long:  "Run git log @{u}..HEAD --reverse with optional patches, diff statistics, and whitespace filtering.\nUse --difft for Difftastic or --hunk for hunk pager. Both imply --patch.\nOutput uses Git's format and pager, not git-review's review state.",
+		Long:  "Run git log @{u}..HEAD --reverse with optional one-line summaries, patches, diff statistics, and whitespace filtering.\nUse --difft for Difftastic or --hunk for hunk pager. Both imply --patch.\nOutput uses Git's format and pager, not git-review's review state.",
 		Args:  cobra.NoArgs,
 		RunE:  c.RunE,
 	}
+	cmd.Flags().BoolVar(&c.Oneline, "oneline", false, "Show each commit as an abbreviated hash and subject")
 	cmd.Flags().BoolVarP(&c.Patch, "patch", "p", false, "Show the patch for each commit")
 	cmd.Flags().BoolVarP(&c.IgnoreAllSpace, "ignore-all-space", "w", false, "Ignore whitespace changes in patches")
 	cmd.Flags().BoolVar(&c.Stat, "stat", false, "Show diff statistics for each commit")
@@ -77,6 +79,9 @@ func (c *Command) gitArgs() []string {
 		args = append(args, "-c", "diff.external=difft")
 	}
 	args = append(args, "log", "@{u}..HEAD", "--reverse")
+	if c.Oneline {
+		args = append(args, "--oneline")
+	}
 	if c.Difft {
 		args = append(args, "--ext-diff")
 	}

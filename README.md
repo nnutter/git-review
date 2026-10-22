@@ -69,6 +69,7 @@ Configure the intended upstream explicitly with Git.
 
 ```sh
 git-review log
+git-review log --oneline
 git-review log -p
 git-review log -pw
 git-review log --stat
@@ -77,6 +78,8 @@ git-review log --hunk
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
+Use `--oneline` to show each commit as an abbreviated hash and subject.
+You can combine it with patch and diff-statistics options.
 Use `-p` or `--patch` to show patches.
 Use `--stat` to show diff statistics, with or without patches.
 Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.

@@ -28,8 +28,12 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 		flags   []string
 		patches int
 		stat    bool
+		oneline bool
 	}{
 		{name: "default"},
+		{name: "oneline", flags: []string{"--oneline"}, oneline: true},
+		{name: "oneline with patch", flags: []string{"--oneline", "-p"}, patches: 2, oneline: true},
+		{name: "oneline with stat", flags: []string{"--oneline", "--stat"}, stat: true, oneline: true},
 		{name: "stat", flags: []string{"--stat"}, stat: true},
 		{name: "stat with patch", flags: []string{"--stat", "-p"}, patches: 2, stat: true},
 		{name: "patch", flags: []string{"-p"}, patches: 2},
@@ -42,10 +46,19 @@ func TestLogShowsUpstreamCommitsAndOptionalPatches(t *testing.T) {
 			out, terminal, err := execute(t, dir, append([]string{"log"}, tc.flags...)...)
 			require.NoError(t, err)
 			require.Empty(t, terminal)
-			require.NotContains(t, out, "    Base\n")
-			first := strings.Index(out, "    Add feature\n")
-			second := strings.Index(out, "    Add example\n")
-			third := strings.Index(out, "    Change whitespace\n")
+			require.NotContains(t, out, " Base\n")
+			if tc.oneline {
+				require.Regexp(t, `(?m)^[0-9a-f]+ Add feature$`, out)
+				require.Regexp(t, `(?m)^[0-9a-f]+ Add example$`, out)
+				require.Regexp(t, `(?m)^[0-9a-f]+ Change whitespace$`, out)
+				require.NotContains(t, out, "Change-Id:")
+				if len(tc.flags) == 1 {
+					require.Equal(t, 3, strings.Count(out, "\n"))
+				}
+			}
+			first := strings.Index(out, " Add feature\n")
+			second := strings.Index(out, " Add example\n")
+			third := strings.Index(out, " Change whitespace\n")
 			require.GreaterOrEqual(t, first, 0)
 			require.Greater(t, second, first)
 			require.Greater(t, third, second)
