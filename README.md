@@ -506,6 +506,16 @@ It does not generate Change-Ids or guess lineage for split or combined changes.
 
 ## Development
 
+Install the pinned tools and repository hooks:
+
+```sh
+mise install
+mise run install-hooks
+```
+
+The install task removes existing Lefthook hooks before installing hk.
+Hook configuration lives in [`hk.pkl`](hk.pkl), with commands in [`mise.toml`](mise.toml).
+
 ```sh
 mise run tests
 mise run ci-tests
