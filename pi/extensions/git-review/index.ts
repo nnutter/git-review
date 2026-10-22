@@ -158,6 +158,15 @@ export default function (pi: ExtensionAPI) {
 		idleTimer = undefined;
 	}
 
+	pi.registerCommand("feedback", {
+		description: "Ask the model to retrieve and address git-review feedback",
+		handler: async (_args, ctx) => {
+			const request = "Use the git-review skill to retrieve current feedback with `git-review feedback --json` and address it.";
+			if (ctx.isIdle()) pi.sendUserMessage(request);
+			else pi.sendUserMessage(request, { deliverAs: "followUp" });
+		},
+	});
+
 	pi.events.on(MISE_COORDINATES_EVENT, () => {
 		miseCoordinates = true;
 	});

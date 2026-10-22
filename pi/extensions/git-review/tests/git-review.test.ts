@@ -10,6 +10,8 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 	const events = new EventEmitter();
 	const handlers = new Map<string, Function>();
 	const messages: string[] = [];
+	const deliveries: unknown[] = [];
+	const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
 	const published: unknown[] = [];
 	let feedback = 1;
 	let activity = { code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":true}' };
@@ -22,6 +24,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 	const pi = {
 		events,
 		on: (name: string, handler: Function) => handlers.set(name, handler),
+		registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) => commands.set(name, command),
 		exec: async (command: string, args: string[]) => {
 			if (command === "git") return { code: 0, killed: false, stdout: "true" };
 			assert.equal(command, "git-review");
@@ -42,12 +45,16 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 				{ state: "approved", count: 0 },
 			] }) };
 		},
-		sendUserMessage: (message: string) => messages.push(message),
+		sendUserMessage: (message: string, options?: unknown) => {
+			messages.push(message);
+			deliveries.push(options);
+		},
 	} as unknown as ExtensionAPI;
 	events.on("git-review:status", data => published.push(data));
 	gitReview(pi);
 	return {
-		events, messages, published, ctx,
+		events, messages, deliveries, published, ctx,
+		command: async (name: string) => { await commands.get(name)!.handler("", ctx); },
 		setActivity: (result: typeof activity) => { activity = result; },
 		setFeedback: (count: number) => { feedback = count; },
 		setIdle: (value: boolean) => { idle = value; },
@@ -62,6 +69,18 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 		},
 	};
 }
+
+test("/feedback asks the model to pull feedback and queues when busy", async () => {
+	for (const idle of [true, false]) {
+		const h = harness();
+		h.setIdle(idle);
+		await h.command("feedback");
+		assert.deepEqual(h.messages, ["Use the git-review skill to retrieve current feedback with `git-review feedback --json` and address it."]);
+		assert.deepEqual(h.deliveries, [idle ? undefined : { deliverAs: "followUp" }]);
+		assert.equal(h.statusCalls(), 0, "the command delegates retrieval to the model");
+		assert.equal(h.activityCalls(), 0);
+	}
+});
 
 for (const coordinated of [false, true]) {
 	test(`defer feedback until review ends (${coordinated ? "mise" : "settle"})`, async () => {
