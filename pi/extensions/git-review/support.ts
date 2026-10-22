@@ -3,7 +3,6 @@
  *
  * No Pi imports: node:test can load this file outside the Pi process.
  * `git-review status --needs-review --json` prints `commits` stacks with a summary of { state, count }.
- * `git-review status --is-reviewing --json` prints whether a `commits` or `files` review holds the lock.
  * `git-review commits --json` returns `"command":"commits"` for fixup workflow.
  * `git-review files --json` returns `"command":"files"` for new-commit workflow.
  * Failures print a versioned object and exit non-zero. Callers check
@@ -82,24 +81,6 @@ export function parseGitReviewStatus(stdout: string): GitReviewStatus | undefine
 	};
 }
 
-/**
- * Parse successful `git-review status --is-reviewing --json` stdout.
- * Returns the reviewing flag, or undefined for unsupported results.
- */
-export function parseIsReviewing(stdout: string): boolean | undefined {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(stdout);
-	} catch {
-		return undefined;
-	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-	const result = parsed as { version?: unknown; command?: unknown; is_reviewing?: unknown };
-	if (result.version !== 1 || result.command !== "status") return undefined;
-	if (typeof result.is_reviewing !== "boolean") return undefined;
-	return result.is_reviewing;
-}
-
 /** Accept only the status object git-review publishes. */
 export function reviewLineFromEvent(data: unknown): string | undefined {
 	if (data === null || typeof data !== "object") return undefined;
@@ -114,9 +95,3 @@ export function reviewLineFromEvent(data: unknown): string | undefined {
 	return expected;
 }
 
-export function feedbackNotice(count: number): string {
-	if (count === 1) {
-		return "git-review has 1 commit in the feedback state. Use the git-review skill to address it.";
-	}
-	return `git-review has ${count} commits in the feedback state. Use the git-review skill to address them.`;
-}
