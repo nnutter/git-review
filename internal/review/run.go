@@ -62,6 +62,8 @@ func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (result Res
 	if _, err := lock.WriteString(branch); err != nil {
 		return result, err
 	}
+	stopMaintenance := startCacheMaintenance(ctx, r.Service.Repository, lock)
+	defer stopMaintenance()
 	result, err = r.reviewSequence(ctx, options, path, lock)
 	if err != nil {
 		return result, err
