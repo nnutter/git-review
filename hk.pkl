@@ -1,6 +1,14 @@
 amends "package://github.com/jdx/hk/releases/download/v2.8.0/hk@2.8.0#/Config.pkl"
 
 hooks {
+  ["commit-msg"] {
+    fix = true
+    steps {
+      ["change-id"] {
+        fix = "go run . commit-msg \"{{commit_msg_file}}\""
+      }
+    }
+  }
   ["pre-commit"] {
     fix = true
     stash = "git"

@@ -547,6 +547,8 @@ mise run install-hooks
 
 The install task removes existing Lefthook hooks before installing hk.
 Hook configuration lives in [`hk.pkl`](hk.pkl), with commands in [`mise.toml`](mise.toml).
+The `commit-msg` hook runs `go run . commit-msg` to generate Change-Ids with the checked-out source.
+Run `mise run install-hooks` again after adding a new hook to the configuration.
 
 ```sh
 mise run tests
