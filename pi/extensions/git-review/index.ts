@@ -3,7 +3,8 @@
  *
  * Reads `git-review status --needs-review --json` for the current Git feature branch and
  * publishes the `commits` counts on `git-review:status`. Outside a Git repository it
- * publishes nothing. `files` reviews use `"command":"files"` and are addressed
+ * publishes nothing. Optional lifecycle checks do not delay event dispatch;
+ * explicit refresh requests remain awaitable. `files` reviews use `"command":"files"` and are addressed
  * as new commits, not fixups; they hold the same worktree lock so
  * `status --is-reviewing` defers notices during either review.
  *
@@ -39,11 +40,15 @@ const STATUS_TIMEOUT_MS = 15_000;
 const IDLE_POLL_MS = 5_000;
 
 type AfterOnStopHook = (ctx: ExtensionContext, aborted: boolean) => Promise<void> | void;
+type StopCheck = { ctx: ExtensionContext; aborted: boolean; idleOnly: boolean; epoch: number; revision: number };
 
 export default function (pi: ExtensionAPI) {
 	let miseCoordinates = false;
 	let lastNudgedFeedback: number | undefined;
 	let checkInFlight: Promise<void> | undefined;
+	let pendingStop: StopCheck | undefined;
+	const statusReads = new Map<string, Promise<GitReviewStatus | undefined>>();
+	let noticeRevision = 0;
 	let idleTimer: ReturnType<typeof setInterval> | undefined;
 	let generation = 0;
 	let idleNoticesAllowed = true;
@@ -56,14 +61,26 @@ export default function (pi: ExtensionAPI) {
 		return !result.killed && result.code === 0 && result.stdout.trim() === "true";
 	}
 
-	/** Publish status for a repository. Returns undefined when there is nothing to publish. */
-	async function readAndPublish(cwd: string): Promise<GitReviewStatus | undefined> {
-		if (!(await isRepository(cwd))) return undefined;
+	/** Coalesce readers without making optional checks delay lifecycle handlers. */
+	function readAndPublish(cwd: string): Promise<GitReviewStatus | undefined> {
+		const epoch = generation;
+		const key = JSON.stringify([epoch, cwd]);
+		const existing = statusReads.get(key);
+		if (existing) return existing;
+		const pending = readStatus(cwd, epoch).finally(() => {
+			if (statusReads.get(key) === pending) statusReads.delete(key);
+		});
+		statusReads.set(key, pending);
+		return pending;
+	}
+
+	async function readStatus(cwd: string, epoch: number): Promise<GitReviewStatus | undefined> {
+		if (!(await isRepository(cwd)) || epoch !== generation) return undefined;
 		const result = await pi.exec("git-review", ["status", "--needs-review", "--json"], {
 			cwd,
 			timeout: STATUS_TIMEOUT_MS,
 		});
-		if (result.killed || result.code !== 0) return undefined;
+		if (result.killed || result.code !== 0 || epoch !== generation) return undefined;
 		const status = parseGitReviewStatus(result.stdout);
 		if (!status) return undefined;
 		pi.events.emit(GIT_REVIEW_STATUS_EVENT, {
@@ -82,9 +99,9 @@ export default function (pi: ExtensionAPI) {
 		if (!ctx.hasUI) console.error(notice);
 	}
 
-	async function checkFeedback(ctx: ExtensionContext, aborted: boolean, idleOnly: boolean, epoch: number): Promise<void> {
+	async function checkFeedback({ ctx, aborted, idleOnly, epoch, revision }: StopCheck): Promise<void> {
 		const status = await readAndPublish(ctx.cwd);
-		if (!status || epoch !== generation) return;
+		if (!status || epoch !== generation || revision !== noticeRevision) return;
 		if (status.feedback === 0) {
 			lastNudgedFeedback = undefined;
 			return;
@@ -96,32 +113,59 @@ export default function (pi: ExtensionAPI) {
 		});
 		if (activity.killed || activity.code !== 0) return;
 		const reviewing = parseIsReviewing(activity.stdout);
-		if (reviewing !== false || epoch !== generation) return;
+		if (reviewing !== false || epoch !== generation || revision !== noticeRevision) return;
 		if (idleOnly && (!ctx.isIdle() || !idleNoticesAllowed)) return;
 		lastNudgedFeedback = status.feedback;
 		nudge(ctx, status.feedback);
 	}
 
-	async function onStop(ctx: ExtensionContext, aborted: boolean, idleOnly = false): Promise<void> {
-		if (!idleOnly) idleNoticesAllowed = false;
-		const epoch = generation;
-		while (checkInFlight) await checkInFlight;
-		if (epoch !== generation) return;
-		const pending = checkFeedback(ctx, aborted, idleOnly, epoch);
-		checkInFlight = pending;
-		try {
-			await pending;
-		} finally {
-			checkInFlight = undefined;
-			if (!idleOnly && epoch === generation) idleNoticesAllowed = !aborted;
+	function onStop(ctx: ExtensionContext, aborted: boolean, idleOnly = false): void {
+		if (!idleOnly) {
+			idleNoticesAllowed = false;
+			noticeRevision++;
 		}
+		const request = { ctx, aborted, idleOnly, epoch: generation, revision: noticeRevision };
+		if (checkInFlight) {
+			if (!idleOnly) pendingStop = request;
+			return;
+		}
+		runStopCheck(request);
+	}
+
+	function runStopCheck(request: StopCheck): void {
+		const pending = checkFeedback(request).catch(() => {
+			// Status is optional. A later request or idle check can retry.
+		});
+		checkInFlight = pending;
+		void pending.finally(() => {
+			if (checkInFlight !== pending) return;
+			checkInFlight = undefined;
+			if (request.epoch !== generation) return;
+			if (!request.idleOnly && request.revision === noticeRevision) idleNoticesAllowed = !request.aborted;
+			const next = pendingStop;
+			pendingStop = undefined;
+			if (next && next.epoch === generation && next.revision === noticeRevision) runStopCheck(next);
+		});
 	}
 
 	function stopMonitoring(): void {
 		generation++;
+		noticeRevision++;
+		pendingStop = undefined;
+		checkInFlight = undefined;
+		statusReads.clear();
 		if (idleTimer) clearInterval(idleTimer);
 		idleTimer = undefined;
 	}
+
+	pi.registerCommand("feedback", {
+		description: "Ask the model to retrieve and address git-review feedback",
+		handler: async (_args, ctx) => {
+			const request = "Use the git-review skill to retrieve current feedback with `git-review feedback --json` and address it.";
+			if (ctx.isIdle()) pi.sendUserMessage(request);
+			else pi.sendUserMessage(request, { deliverAs: "followUp" });
+		},
+	});
 
 	pi.events.on(MISE_COORDINATES_EVENT, () => {
 		miseCoordinates = true;
@@ -145,40 +189,34 @@ export default function (pi: ExtensionAPI) {
 	// it emits MISE_COORDINATES_EVENT itself.
 	pi.events.emit(GIT_REVIEW_READY_EVENT, undefined);
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", (_event, ctx) => {
 		stopMonitoring();
 		lastNudgedFeedback = undefined;
 		idleNoticesAllowed = true;
 		if (ctx.mode === "tui" || ctx.mode === "rpc") {
 			idleTimer = setInterval(() => {
 				if (!ctx.isIdle() || !idleNoticesAllowed || checkInFlight) return;
-				void onStop(ctx, false, true).catch(() => {
-					// Status is optional. Retry on the next idle check.
-				});
+				onStop(ctx, false, true);
 			}, IDLE_POLL_MS);
 			idleTimer.unref();
 		}
-		try {
-			await readAndPublish(ctx.cwd);
-		} catch {
+		void readAndPublish(ctx.cwd).catch(() => {
 			// Status is optional.
-		}
+		});
 	});
 
 	pi.on("agent_start", () => {
 		idleNoticesAllowed = false;
+		noticeRevision++;
+		pendingStop = undefined;
 	});
 
 	pi.on("session_shutdown", () => {
 		stopMonitoring();
 	});
 
-	pi.on("agent_settled", async (event, ctx) => {
+	pi.on("agent_settled", (event, ctx) => {
 		if (miseCoordinates) return;
-		try {
-			await onStop(ctx, event.aborted === true);
-		} catch {
-			// Status is optional.
-		}
+		onStop(ctx, event.aborted === true);
 	});
 }

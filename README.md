@@ -9,7 +9,7 @@ Cobra and Fang provide the command interface, Lip Gloss renders summaries, and H
 - Linux or macOS.
 - Git and tuicr on `PATH`.
 - A checked-out feature branch with a configured Git upstream.
-- Go 1.27.1 or later to build from source.
+- Go 1.27.3 or later to build from source.
 
 ```sh
 go install github.com/nnutter/git-review@latest
@@ -39,6 +39,8 @@ Install the git-review CLI separately and ensure `git-review` is on `PATH`.
 The package does not install the CLI or tuicr.
 Remove any manually installed copies of the git-review extension or skill to avoid loading them twice.
 
+Use `/feedback` in Pi to ask the model to retrieve and address saved feedback with the git-review skill.
+
 The extension source lives in [`pi/extensions/git-review/`](pi/extensions/git-review/), with `index.ts` as its entry point and tests in `tests/`.
 It publishes review counts for other extensions and asks the model to use the git-review skill when feedback exists after an agent run.
 It defers model notices while a review is active for the current branch.
@@ -67,6 +69,7 @@ Configure the intended upstream explicitly with Git.
 
 ```sh
 git-review log
+git-review log --oneline
 git-review log -p
 git-review log -pw
 git-review log --stat
@@ -75,6 +78,8 @@ git-review log --hunk
 ```
 
 This command runs `git log @{u}..HEAD --reverse`, so commits appear in oldest-first order.
+Use `--oneline` to show each commit as an abbreviated hash and subject.
+You can combine it with patch and diff-statistics options.
 Use `-p` or `--patch` to show patches.
 Use `--stat` to show diff statistics, with or without patches.
 Use `-w` or `--ignore-all-space` to ignore whitespace changes in patches.
@@ -431,6 +436,46 @@ Supported formats are review index `2.0` and saved session `1.3`.
 It never writes tuicr annotations or rewrites feature-branch history.
 Compatibility with Pi's branch state requires Pi to adopt the `tuicr-reviews` path.
 
+## Patch cache maintenance
+
+Use these commands to prepare fingerprints for a later `git-review status` or to prune the repository's shared cache:
+
+```sh
+git-review cache warm           # Warm the stack containing HEAD
+git-review cache warm <commit>  # Warm the current stack containing this commit
+git-review cache prune          # Apply the existing retention limits
+```
+
+Warming requires a configured upstream and linear feature history, like `status`.
+It computes only the selected stack's fingerprint, including attached fixups, and leaves other missing entries for `status`.
+The commit must belong to the current feature range.
+Neither command changes review history or launches tuicr.
+Cache storage remains best-effort, as it is for `status`.
+Both commands produce no stdout on success unless you pass `--json`.
+JSON results use `{"version":1,"command":"warm","status":"ok"}` or the same structure with `"command":"prune"`.
+
+Git's `post-commit` hook receives no arguments, so `cache warm` defaults to `HEAD`.
+Add this command to your existing hook, or use this script as the executable `post-commit` hook in your configured hooks directory:
+
+```sh
+#!/bin/sh
+git-review cache warm >/dev/null 2>&1 || :
+```
+
+This best-effort hook suppresses errors, including commits on branches without an upstream.
+It runs synchronously and moves the selected fingerprint computation from the next status call into the commit hook.
+It does not cache a complete status result.
+
+Pruning does not require an upstream or an attached branch.
+It removes fingerprints older than 30 days and temporary files older than 24 hours.
+It also evicts the oldest fingerprints to enforce the 16 MiB and 10,000-entry limits.
+Each pass scans at most 50,000 directory entries and skips maintenance if another pruner holds the lock.
+Pruning an absent cache succeeds without creating it.
+Interactive reviews already run this maintenance automatically.
+
+The cache commands enter through `internal/cli/cache/cache.go` and the `Repository` methods in `internal/review/git.go`.
+The retention policy lives in `internal/review/maintenance.go`.
+
 ## Changed stacks and Change-Ids
 
 git-review records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
@@ -460,9 +505,53 @@ The next review supplies that check.
 When an original commit has a Gerrit `Change-Id` trailer, git-review uses it to connect stack versions within the same repository and feature branch.
 It never transfers approval through a Change-Id.
 git-review rejects malformed or multiple trailers and duplicate Change-Ids on current original commits.
-It does not generate Change-Ids or guess lineage for split or combined changes.
+It does not guess lineage for split or combined changes.
+
+### Generate Change-Ids with a commit hook
+
+```sh
+git-review commit-msg <message-file>
+```
+
+This command updates the message file in place and produces no output on success.
+It does not require an upstream or a review session.
+Its compatibility reference is the Gerrit hook in [`contrib/commit-msg`](contrib/commit-msg).
+Existing Change-Ids remain unchanged, including during an amend.
+Like that reference version, it also adds IDs to `fixup!` and `squash!` messages.
+
+To use it without a hook manager, add this command to your executable `commit-msg` hook:
+
+```sh
+#!/bin/sh
+exec git-review commit-msg "$1"
+```
+
+Use `git rev-parse --git-path hooks` to locate the default hooks directory.
+If you set `core.hooksPath`, use that directory instead.
+If another hook already exists, integrate the command rather than replace the hook.
+
+The command honors Gerrit's configuration:
+
+- `gerrit.createChangeId=false` disables changes to the message.
+- `gerrit.reviewUrl` selects a Gerrit `Link` trailer instead of a `Change-Id` trailer.
+
+Review lineage currently requires a `Change-Id` trailer, not a `Link` trailer.
+Empty or comment-only messages fail unless ID creation is disabled.
+Successful hook calls remain silent even with `--json`.
 
 ## Development
+
+Install the pinned tools and repository hooks:
+
+```sh
+mise install
+mise run install-hooks
+```
+
+The install task removes existing Lefthook hooks before installing hk.
+Hook configuration lives in [`hk.pkl`](hk.pkl), with commands in [`mise.toml`](mise.toml).
+The `commit-msg` hook runs `go run . commit-msg` to generate Change-Ids with the checked-out source.
+Run `mise run install-hooks` again after adding a new hook to the configuration.
 
 ```sh
 mise run tests

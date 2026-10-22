@@ -92,6 +92,8 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 		_ = lock.Close()
 	}()
 
+	stopMaintenance := startCacheMaintenance(ctx, r.Service.Repository, lock)
+	defer stopMaintenance()
 	if reviewBranchFiles(options) {
 		return r.reviewBranchDiff(ctx, repo, options.Session, lock)
 	}

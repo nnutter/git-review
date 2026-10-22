@@ -6,12 +6,17 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"time"
+
+	"charm.land/log/v2"
 )
 
 // Stack identifies an original commit and its adjacent feedback commits.
@@ -102,8 +107,29 @@ type Snapshot struct {
 	Path   string  `json:"statePath"`
 }
 
+// NewRepository creates command-scoped diagnostics for a source checkout.
+func NewRepository(dir string, logger *log.Logger) Repository {
+	return Repository{Dir: dir, Logger: logger, missingIDWarning: new(sync.Once)}
+}
+
 // Repository executes Git in the source checkout.
-type Repository struct{ Dir string }
+type Repository struct {
+	Dir              string
+	Logger           *log.Logger
+	missingIDWarning *sync.Once
+}
+
+var quietLogger = log.New(io.Discard)
+
+// PruneCache applies the maintenance retention limits to the shared cache.
+// Repository discovery does not require a branch, upstream, or review history.
+func (r Repository) PruneCache(ctx context.Context) error {
+	common, err := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	return prunePatchCache(ctx, filepath.Join(common, "git-review", "cache", "patch-v2"))
+}
 
 // Resolve accepts a commit reference but never interprets it as an option.
 func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
@@ -112,41 +138,47 @@ func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
 
 // Snapshot requires an upstream and a single, linear feature-branch range.
 func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
-	view, repo, err := r.branchView(ctx)
+	started := time.Now()
+	defer func() { r.logger().Debug("Repository snapshot completed", "elapsed", time.Since(started)) }()
+	view, repo, err := r.stackView(ctx)
 	if err != nil {
 		return view, err
 	}
-	view.Head, err = r.Resolve(ctx, "HEAD")
-	if err != nil {
-		return view, err
-	}
-	targetSHA, err := r.Resolve(ctx, view.Target)
-	if err != nil {
-		return view, err
-	}
-	view.Base, err = r.git(ctx, "merge-base", "--all", view.Head, targetSHA)
-	if err != nil {
-		return view, err
-	}
-	if strings.Contains(view.Base, "\n") {
-		return view, fmt.Errorf("review requires one merge-base with upstream")
-	}
-	history, err := r.git(ctx, "log", "--reverse", "--format=%H%x00%P%x00%s", view.Base+".."+view.Head)
-	if err != nil {
-		return view, err
-	}
-	view.Stacks, err = r.stacks(ctx, repo, view.Base, history)
-	if err != nil {
-		return view, err
-	}
+	cache := newPatchCache(ctx, r, view, repo)
 	for i := range view.Stacks {
 		stack := &view.Stacks[i]
-		stack.PatchHash, err = r.patchHash(ctx, stack.Base, stack.Tip)
+		stack.PatchHash, err = cache.hash(ctx, r, stack.Base, stack.Tip)
 		if err != nil {
 			return view, err
 		}
 	}
 	return view, nil
+}
+
+// WarmCache fingerprints only the current feature stack containing ref.
+// An empty ref selects HEAD. Missing entries for other stacks remain untouched.
+func (r Repository) WarmCache(ctx context.Context, ref string) error {
+	if ref == "" {
+		ref = "HEAD"
+	}
+	sha, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return err
+	}
+	view, repo, err := r.stackView(ctx)
+	if err != nil {
+		return err
+	}
+	for _, stack := range view.Stacks {
+		if !slices.Contains(stack.Commits, sha) {
+			continue
+		}
+		view.Stacks = []Stack{stack}
+		cache := newPatchCache(ctx, r, view, repo)
+		_, err := cache.hash(ctx, r, stack.Base, stack.Tip)
+		return err
+	}
+	return fmt.Errorf("commit %s is not in the current feature range", sha)
 }
 
 func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
@@ -162,11 +194,7 @@ func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
 	return view, repo, nil
 }
 
-func (r Repository) changeID(ctx context.Context, sha string, ids map[string]bool) (string, error) {
-	id, err := r.git(ctx, "show", "-s", "--format=%(trailers:key=Change-Id,valueonly)", sha)
-	if err != nil {
-		return "", err
-	}
+func changeID(sha, id string, ids map[string]bool) (string, error) {
 	if id == "" {
 		return "", nil
 	}
@@ -204,11 +232,14 @@ func (r Repository) git(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
+func (r Repository) gitInput(ctx context.Context, input string, args ...string) (string, error) {
+	started := time.Now()
+	defer func() { r.logger().Debug("Git command completed", "args", args, "elapsed", time.Since(started)) }()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
+	cmd.Stdin = strings.NewReader(input)
 	// Keep Git diagnostics stable so repository discovery errors can be identified.
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var stderr strings.Builder
@@ -221,6 +252,17 @@ func (r Repository) gitOutput(ctx context.Context, args ...string) (string, erro
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return string(out), nil
+}
+
+func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
+	return r.gitInput(ctx, "", args...)
+}
+
+func (r Repository) logger() *log.Logger {
+	if r.Logger != nil {
+		return r.Logger
+	}
+	return quietLogger
 }
 
 // patchHash fingerprints the aggregate diff, not commit metadata. Empty diffs
@@ -294,36 +336,63 @@ func (r Repository) reviewBranch(ctx context.Context) (string, error) {
 	return "", err
 }
 
-func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]Stack, error) {
+func (r Repository) stackView(ctx context.Context) (Snapshot, string, error) {
+	view, repo, err := r.branchView(ctx)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Head, err = r.Resolve(ctx, "HEAD")
+	if err != nil {
+		return view, repo, err
+	}
+	targetSHA, err := r.Resolve(ctx, view.Target)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Base, err = r.git(ctx, "merge-base", "--all", view.Head, targetSHA)
+	if err != nil {
+		return view, repo, err
+	}
+	if strings.Contains(view.Base, "\n") {
+		return view, repo, fmt.Errorf("review requires one merge-base with upstream")
+	}
+	history, err := readHistory(ctx, r, repo, view.Base, view.Head)
+	if err != nil {
+		return view, repo, err
+	}
+	view.Stacks, err = r.stacks(repo, view.Base, history)
+	if err != nil {
+		return view, repo, err
+	}
+	return view, repo, nil
+}
+
+func (r Repository) stacks(repo, base string, history []historyCommit) ([]Stack, error) {
 	stacks := []Stack{}
-	if history == "" {
+	if len(history) == 0 {
 		return stacks, nil
 	}
 	parent := base
 	ids := map[string]bool{}
 	targets := map[string][]int{}
-	for row := range strings.SplitSeq(history, "\n") {
-		fields := strings.SplitN(row, "\x00", 3)
-		if len(fields) != 3 {
-			return nil, fmt.Errorf("invalid Git history record")
-		}
-		if fields[1] != parent {
+	for _, commit := range history {
+		if commit.parent != parent {
 			return nil, fmt.Errorf("review requires linear feature history; resolve merges first")
 		}
-		sha, subject := fields[0], fields[2]
+		sha, subject := commit.sha, commit.subject
 		if subject == "" {
 			return nil, fmt.Errorf("commit %s has an empty subject", sha)
 		}
 		if match := feedbackSubject.FindStringSubmatch(subject); match != nil {
 			if !tryAppendFeedback(stacks, targets, sha, match[1], match[2]) {
-				id, err := r.changeID(ctx, sha, ids)
+				id, err := changeID(sha, commit.changeID, ids)
 				if err != nil {
 					return nil, err
 				}
 				stacks = append(stacks, Stack{Repo: repo, Commits: []string{sha}, Base: parent, Tip: sha, Subject: subject, Key: sha, ChangeID: id})
 			}
 		} else {
-			id, err := r.changeID(ctx, sha, ids)
+			id, err := changeID(sha, commit.changeID, ids)
 			if err != nil {
 				return nil, err
 			}
@@ -332,7 +401,26 @@ func (r Repository) stacks(ctx context.Context, repo, base, history string) ([]S
 		targets[subject] = append(targets[subject], len(stacks)-1)
 		parent = sha
 	}
+	warnMissingChangeIDs(r, stacks)
 	return stacks, nil
+}
+
+func warnMissingChangeIDs(r Repository, stacks []Stack) {
+	if r.missingIDWarning == nil {
+		return
+	}
+	missing := 0
+	for _, stack := range stacks {
+		if stack.ChangeID == "" {
+			missing++
+		}
+	}
+	if missing == 0 {
+		return
+	}
+	r.missingIDWarning.Do(func() {
+		r.logger().Warn("Original commits lack Change-Id trailers; add them to improve lineage tracking after rewrites", "commits", missing)
+	})
 }
 
 func detachedHEADExit(err error) bool {

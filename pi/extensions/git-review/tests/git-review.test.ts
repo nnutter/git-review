@@ -4,22 +4,27 @@ import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import gitReview from "../index.ts";
-import { MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT } from "../support.ts";
+import { GIT_REVIEW_REQUEST_STATUS_EVENT, MISE_AFTER_ON_STOP_EVENT, MISE_COORDINATES_EVENT, type GitReviewStatusRequest } from "../support.ts";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
 	const events = new EventEmitter();
 	const handlers = new Map<string, Function>();
 	const messages: string[] = [];
+	const deliveries: unknown[] = [];
+	const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
 	const published: unknown[] = [];
 	let feedback = 1;
 	let activity = { code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":true}' };
 	let idle = true;
 	let activityGate: Promise<void> | undefined;
+	let statusGate: Promise<void> | undefined;
+	let statusCalls = 0;
 	let activityCalls = 0;
 	const ctx = { cwd: "/repo", mode, hasUI: true, isIdle: () => idle } as ExtensionContext;
 	const pi = {
 		events,
 		on: (name: string, handler: Function) => handlers.set(name, handler),
+		registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) => commands.set(name, command),
 		exec: async (command: string, args: string[]) => {
 			if (command === "git") return { code: 0, killed: false, stdout: "true" };
 			assert.equal(command, "git-review");
@@ -30,6 +35,8 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 				return activity;
 			}
 			assert.deepEqual(args, ["status", "--needs-review", "--json"]);
+			statusCalls++;
+			await statusGate;
 			return { code: 0, killed: false, stdout: JSON.stringify({ version: 1, command: "status", status: "pending", summary: [
 				{ state: "needs_review", count: 2 },
 				{ state: "reviewing", count: 1 },
@@ -38,20 +45,42 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 				{ state: "approved", count: 0 },
 			] }) };
 		},
-		sendUserMessage: (message: string) => messages.push(message),
+		sendUserMessage: (message: string, options?: unknown) => {
+			messages.push(message);
+			deliveries.push(options);
+		},
 	} as unknown as ExtensionAPI;
 	events.on("git-review:status", data => published.push(data));
 	gitReview(pi);
 	return {
-		events, messages, published, ctx,
+		events, messages, deliveries, published, ctx,
+		command: async (name: string) => { await commands.get(name)!.handler("", ctx); },
 		setActivity: (result: typeof activity) => { activity = result; },
 		setFeedback: (count: number) => { feedback = count; },
 		setIdle: (value: boolean) => { idle = value; },
 		setActivityGate: (gate: Promise<void>) => { activityGate = gate; },
+		setStatusGate: (gate: Promise<void>) => { statusGate = gate; },
+		statusCalls: () => statusCalls,
 		activityCalls: () => activityCalls,
-		emit: async (name: string, event = {}) => { await handlers.get(name)?.(event, ctx); },
+		emitRaw: async (name: string, event = {}) => { await handlers.get(name)?.(event, ctx); },
+		emit: async (name: string, event = {}) => {
+			await handlers.get(name)?.(event, ctx);
+			await setImmediate();
+		},
 	};
 }
+
+test("/feedback asks the model to pull feedback and queues when busy", async () => {
+	for (const idle of [true, false]) {
+		const h = harness();
+		h.setIdle(idle);
+		await h.command("feedback");
+		assert.deepEqual(h.messages, ["Use the git-review skill to retrieve current feedback with `git-review feedback --json` and address it."]);
+		assert.deepEqual(h.deliveries, [idle ? undefined : { deliverAs: "followUp" }]);
+		assert.equal(h.statusCalls(), 0, "the command delegates retrieval to the model");
+		assert.equal(h.activityCalls(), 0);
+	}
+});
 
 for (const coordinated of [false, true]) {
 	test(`defer feedback until review ends (${coordinated ? "mise" : "settle"})`, async () => {
@@ -61,7 +90,10 @@ for (const coordinated of [false, true]) {
 			h.events.emit(MISE_COORDINATES_EVENT);
 			const hooks: ((ctx: ExtensionContext, aborted: boolean) => Promise<void>)[] = [];
 			h.events.emit(MISE_AFTER_ON_STOP_EVENT, hooks);
-			settle = async () => { for (const hook of hooks) await hook(h.ctx, false); };
+			settle = async () => {
+				for (const hook of hooks) await hook(h.ctx, false);
+				await setImmediate();
+			};
 		}
 		await settle();
 		assert.equal(h.messages.length, 0);
@@ -126,6 +158,7 @@ test("idle checks wait for the coordinated on-stop hook", async t => {
 	const hooks: ((ctx: ExtensionContext, aborted: boolean) => Promise<void>)[] = [];
 	h.events.emit(MISE_AFTER_ON_STOP_EVENT, hooks);
 	for (const hook of hooks) await hook(h.ctx, false);
+	await setImmediate();
 	assert.equal(h.messages.length, 1);
 });
 
@@ -187,6 +220,81 @@ test("idle notices respect abort and recheck whether the agent is idle", async t
 	t.mock.timers.tick(5_000);
 	await setImmediate();
 	assert.equal(h.messages.length, 1);
+});
+
+test("slow status reads do not delay lifecycle handlers and explicit refreshes share the read", async () => {
+	const h = harness();
+	let release!: () => void;
+	h.setStatusGate(new Promise<void>(resolve => { release = resolve; }));
+	try {
+		let started = false;
+		const startup = h.emitRaw("session_start").then(() => { started = true; });
+		await setImmediate();
+		assert.equal(started, true, "session startup does not await Git");
+		assert.equal(h.statusCalls(), 1);
+		const request: GitReviewStatusRequest = {};
+		h.events.emit(GIT_REVIEW_REQUEST_STATUS_EVENT, request);
+		let refreshed = false;
+		const refresh = request.refresh!(h.ctx.cwd).then(() => { refreshed = true; });
+		let settled = false;
+		const settling = h.emitRaw("agent_settled").then(() => { settled = true; });
+		await setImmediate();
+		assert.equal(settled, true, "settle dispatch does not await Git");
+		assert.equal(refreshed, false, "explicit refresh still waits for fresh data");
+		assert.equal(h.statusCalls(), 1, "startup, refresh, and settle share one read");
+		release();
+		await Promise.all([startup, refresh, settling]);
+		await setImmediate();
+		assert.equal(h.published.length, 1);
+	} finally {
+		release();
+		await h.emit("session_shutdown");
+	}
+});
+
+test("the latest queued settle controls abort suppression", async () => {
+	const h = harness();
+	let release!: () => void;
+	h.setStatusGate(new Promise<void>(resolve => { release = resolve; }));
+	h.setActivity({ code: 0, killed: false, stdout: '{"version":1,"command":"status","is_reviewing":false}' });
+	await h.emit("agent_settled");
+	await h.emit("agent_settled", { aborted: true });
+	release();
+	await setImmediate();
+	assert.equal(h.messages.length, 0, "a queued abort supersedes an older check");
+	await h.emit("agent_settled");
+	assert.equal(h.messages.length, 1, "a later successful settle can notify");
+});
+
+test("optional background query failures do not prevent later refreshes", async () => {
+	const h = harness();
+	let reject!: (error: Error) => void;
+	h.setStatusGate(new Promise<void>((_resolve, fail) => { reject = fail; }));
+	await h.emit("session_start");
+	reject(new Error("git-review unavailable"));
+	await setImmediate();
+	assert.equal(h.published.length, 0);
+	h.setStatusGate(Promise.resolve());
+	await h.emit("agent_settled");
+	assert.equal(h.published.length, 1);
+	await h.emit("session_shutdown");
+});
+
+test("a stale status read cannot publish into a replacement session", async () => {
+	const h = harness();
+	let releaseOld!: () => void;
+	h.setStatusGate(new Promise<void>(resolve => { releaseOld = resolve; }));
+	await h.emit("session_start");
+	await h.emit("agent_settled");
+	await h.emit("session_shutdown");
+	h.setStatusGate(Promise.resolve());
+	await h.emit("session_start");
+	assert.equal(h.published.length, 1);
+	releaseOld();
+	await setImmediate();
+	assert.equal(h.published.length, 1, "ignore results from the previous generation");
+	assert.equal(h.messages.length, 0);
+	await h.emit("session_shutdown");
 });
 
 test("activity query failures do not authorize a feedback notice", async () => {

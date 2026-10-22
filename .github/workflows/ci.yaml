@@ -33,5 +33,14 @@ jobs:
       - name: Run tests
         run: mise run ci-tests
 
+      - name: Report status benchmarks
+        run: |
+          set -o pipefail
+          printf '## Status benchmarks\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+          mise exec -- go test ./internal/review -run '^$' \
+            -bench 'Benchmark(Snapshot|Status)/(commits=100$|history$|fixups$)' \
+            -benchmem -benchtime=1x -count=3 | tee -a "$GITHUB_STEP_SUMMARY"
+          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run govulncheck
         run: mise run lint-govulncheck

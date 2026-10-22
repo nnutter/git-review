@@ -36,7 +36,7 @@ func featureRepo(t *testing.T) string {
 	git(t, dir, "commit", "--allow-empty", "-m", "Base")
 	git(t, dir, "checkout", "-b", "feature")
 	git(t, dir, "branch", "--set-upstream-to=main")
-	git(t, dir, "commit", "--allow-empty", "-m", "Add feature")
+	git(t, dir, "commit", "--allow-empty", "-m", "Add feature\n\nChange-Id: I"+strings.Repeat("a", 40))
 	return dir
 }
 
@@ -119,7 +119,7 @@ func TestJSONErrorsIncludeArgumentAndGitFailures(t *testing.T) {
 
 func TestReviewBoundsReachAutomaticSelection(t *testing.T) {
 	dir := featureRepo(t)
-	git(t, dir, "commit", "--allow-empty", "-m", "Second")
+	git(t, dir, "commit", "--allow-empty", "-m", "Second\n\nChange-Id: I"+strings.Repeat("b", 40))
 	view, err := (review.Repository{Dir: dir}).Snapshot(t.Context())
 	require.NoError(t, err)
 	require.NoError(t, (review.Store{Path: view.Path}).Update(func(state *review.State) error {

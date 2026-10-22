@@ -50,7 +50,7 @@ type StateCount struct {
 	Count int    `json:"count"`
 }
 
-func countStates(view Snapshot, state State) []StateCount {
+func countStates(entries []Entry) []StateCount {
 	counts := []StateCount{
 		{State: "needs_review"},
 		{State: "reviewing"},
@@ -58,11 +58,10 @@ func countStates(view Snapshot, state State) []StateCount {
 		{State: "incomplete"},
 		{State: "approved"},
 	}
-	for _, stack := range view.Stacks {
-		status := entryFor(state, stack).Status
+	for _, entry := range entries {
 		for i := range counts {
-			if counts[i].State == status {
-				counts[i].Count += len(stack.Commits)
+			if counts[i].State == entry.Status {
+				counts[i].Count += len(entry.Stack.Commits)
 				break
 			}
 		}
@@ -188,13 +187,11 @@ func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := makeResult("status", view, state)
-	result.Summary = countStates(view, state)
+	entries := entriesFor(view, state)
+	result := resultFromEntries("status", view, state, entries)
+	result.Summary = countStates(entries)
 	if !needsReview {
-		result.Entries = make([]Entry, 0, len(view.Stacks))
-		for _, stack := range view.Stacks {
-			result.Entries = append(result.Entries, entryFor(state, stack))
-		}
+		result.Entries = entries
 	}
 	return result, nil
 }
@@ -328,10 +325,21 @@ func entryFor(state State, stack Stack) Entry {
 	return entry
 }
 
-func makeResult(command string, view Snapshot, state State) Result {
-	result := Result{Version: 1, Command: command, Status: "pending", View: view, Entries: []Entry{}, Active: activeAttempts(state)}
+func entriesFor(view Snapshot, state State) []Entry {
+	entries := make([]Entry, 0, len(view.Stacks))
 	for _, stack := range view.Stacks {
-		entry := entryFor(state, stack)
+		entries = append(entries, entryFor(state, stack))
+	}
+	return entries
+}
+
+func makeResult(command string, view Snapshot, state State) Result {
+	return resultFromEntries(command, view, state, entriesFor(view, state))
+}
+
+func resultFromEntries(command string, view Snapshot, state State, entries []Entry) Result {
+	result := Result{Version: 1, Command: command, Status: "pending", View: view, Entries: []Entry{}, Active: activeAttempts(state)}
+	for _, entry := range entries {
 		if entry.Status != "approved" {
 			result.Entries = append(result.Entries, entry)
 		}
