@@ -431,6 +431,46 @@ Supported formats are review index `2.0` and saved session `1.3`.
 It never writes tuicr annotations or rewrites feature-branch history.
 Compatibility with Pi's branch state requires Pi to adopt the `tuicr-reviews` path.
 
+## Patch cache maintenance
+
+Use these commands to prepare fingerprints for a later `git-review status` or to prune the repository's shared cache:
+
+```sh
+git-review cache warm           # Warm the stack containing HEAD
+git-review cache warm <commit>  # Warm the current stack containing this commit
+git-review cache prune          # Apply the existing retention limits
+```
+
+Warming requires a configured upstream and linear feature history, like `status`.
+It computes only the selected stack's fingerprint, including attached fixups, and leaves other missing entries for `status`.
+The commit must belong to the current feature range.
+Neither command changes review history or launches tuicr.
+Cache storage remains best-effort, as it is for `status`.
+Both commands produce no stdout on success unless you pass `--json`.
+JSON results use `{"version":1,"command":"warm","status":"ok"}` or the same structure with `"command":"prune"`.
+
+Git's `post-commit` hook receives no arguments, so `cache warm` defaults to `HEAD`.
+Add this command to your existing hook, or use this script as the executable `post-commit` hook in your configured hooks directory:
+
+```sh
+#!/bin/sh
+git-review cache warm >/dev/null 2>&1 || :
+```
+
+This best-effort hook suppresses errors, including commits on branches without an upstream.
+It runs synchronously and moves the selected fingerprint computation from the next status call into the commit hook.
+It does not cache a complete status result.
+
+Pruning does not require an upstream or an attached branch.
+It removes fingerprints older than 30 days and temporary files older than 24 hours.
+It also evicts the oldest fingerprints to enforce the 16 MiB and 10,000-entry limits.
+Each pass scans at most 50,000 directory entries and skips maintenance if another pruner holds the lock.
+Pruning an absent cache succeeds without creating it.
+Interactive reviews already run this maintenance automatically.
+
+The cache commands enter through `internal/cli/cache/cache.go` and the `Repository` methods in `internal/review/git.go`.
+The retention policy lives in `internal/review/maintenance.go`.
+
 ## Changed stacks and Change-Ids
 
 git-review records an optional `patchHash` for each stack's combined diff, from the original commit's parent to the final fixup.
