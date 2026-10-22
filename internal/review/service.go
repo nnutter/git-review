@@ -106,6 +106,15 @@ func (s Service) Approve(ctx context.Context, first, last string) (Result, error
 	return s.recordApproval(ctx, view, selected)
 }
 
+// ApproveAll records explicit approval of every stack in the feature range.
+func (s Service) ApproveAll(ctx context.Context) (Result, error) {
+	view, err := s.Repository.Snapshot(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	return s.recordApproval(ctx, view, view.Stacks)
+}
+
 // Feedback reads saved commit and file feedback without changing either store.
 func (s Service) Feedback(ctx context.Context) (Result, error) {
 	view, repo, err := s.Repository.checkoutView(ctx)
