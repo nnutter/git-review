@@ -502,7 +502,39 @@ The next review supplies that check.
 When an original commit has a Gerrit `Change-Id` trailer, git-review uses it to connect stack versions within the same repository and feature branch.
 It never transfers approval through a Change-Id.
 git-review rejects malformed or multiple trailers and duplicate Change-Ids on current original commits.
-It does not generate Change-Ids or guess lineage for split or combined changes.
+It does not guess lineage for split or combined changes.
+
+### Generate Change-Ids with a commit hook
+
+```sh
+git-review commit-msg <message-file>
+```
+
+This command updates the message file in place and produces no output on success.
+It does not require an upstream or a review session.
+Its compatibility reference is the Gerrit hook in [`contrib/commit-msg`](contrib/commit-msg).
+Existing Change-Ids remain unchanged, including during an amend.
+Like that reference version, it also adds IDs to `fixup!` and `squash!` messages.
+
+To use it without a hook manager, add this command to your executable `commit-msg` hook:
+
+```sh
+#!/bin/sh
+exec git-review commit-msg "$1"
+```
+
+Use `git rev-parse --git-path hooks` to locate the default hooks directory.
+If you set `core.hooksPath`, use that directory instead.
+If another hook already exists, integrate the command rather than replace the hook.
+
+The command honors Gerrit's configuration:
+
+- `gerrit.createChangeId=false` disables changes to the message.
+- `gerrit.reviewUrl` selects a Gerrit `Link` trailer instead of a `Change-Id` trailer.
+
+Review lineage currently requires a `Change-Id` trailer, not a `Link` trailer.
+Empty or comment-only messages fail unless ID creation is disabled.
+Successful hook calls remain silent even with `--json`.
 
 ## Development
 
