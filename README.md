@@ -344,10 +344,13 @@ Address `commits` feedback with native Git fixup commits inserted immediately af
 ```sh
 git-review approve <start_commit>
 git-review approve <start_commit> <end_commit>
+git-review approve --all
 ```
 
 Endpoints are inclusive and accept Git commit references such as abbreviated SHAs or `HEAD`.
 Supply separate endpoints, not a Git `A..B` expression.
+`--all` approves every stack in the feature range and cannot be combined with endpoints.
+Omitting both endpoints and `--all` is an error.
 The selected range must contain complete stacks, including all attached fixups.
 Pending feedback on a current stack or an active attempt blocks approval.
 Explicit approval can approve an incomplete stack without deleting its prior attempts.
