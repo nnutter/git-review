@@ -103,35 +103,7 @@ func (s Service) Approve(ctx context.Context, first, last string) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
-	store := Store{Path: view.Path}
-	err = store.Update(func(state *State) error {
-		if err := approvalAllowed(selected, *state); err != nil {
-			return err
-		}
-		if err := s.unchanged(ctx, view); err != nil {
-			return err
-		}
-		for _, stack := range selected {
-			a := newAttempt(stack, "approved")
-			a.ApprovalSource = "user-command"
-			state.Attempts = append(state.Attempts, a)
-		}
-		return nil
-	})
-	if err != nil {
-		return Result{}, err
-	}
-	state, err := store.Load()
-	if err != nil {
-		return Result{}, err
-	}
-	result := makeResult("approve", view, state)
-	result.Status = "approved"
-	result.Entries = nil
-	for _, stack := range selected {
-		result.Entries = append(result.Entries, entryFor(state, stack))
-	}
-	return result, nil
+	return s.recordApproval(ctx, view, selected)
 }
 
 // Feedback reads saved commit and file feedback without changing either store.
@@ -213,6 +185,39 @@ func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (
 	view.Head = head
 	view.Target = target
 	return view, nil
+}
+
+// recordApproval appends user-command approvals for the selected complete stacks.
+func (s Service) recordApproval(ctx context.Context, view Snapshot, selected []Stack) (Result, error) {
+	store := Store{Path: view.Path}
+	err := store.Update(func(state *State) error {
+		if err := approvalAllowed(selected, *state); err != nil {
+			return err
+		}
+		if err := s.unchanged(ctx, view); err != nil {
+			return err
+		}
+		for _, stack := range selected {
+			a := newAttempt(stack, "approved")
+			a.ApprovalSource = "user-command"
+			state.Attempts = append(state.Attempts, a)
+		}
+		return nil
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	state, err := store.Load()
+	if err != nil {
+		return Result{}, err
+	}
+	result := makeResult("approve", view, state)
+	result.Status = "approved"
+	result.Entries = nil
+	for _, stack := range selected {
+		result.Entries = append(result.Entries, entryFor(state, stack))
+	}
+	return result, nil
 }
 
 func (s Service) selectRange(ctx context.Context, view Snapshot, first, last string) ([]Stack, error) {
