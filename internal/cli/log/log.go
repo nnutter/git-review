@@ -57,6 +57,18 @@ func (c *Command) RunE(cmd *cobra.Command, _ []string) error {
 	if asJSON {
 		return fmt.Errorf("log does not support --json")
 	}
+	git := exec.CommandContext(cmd.Context(), "git", c.gitArgs()...)
+	git.Dir = c.Service.Repository.Dir
+	git.Stdin = c.Input
+	git.Stdout = c.Output
+	git.Stderr = c.Terminal
+	if err := git.Run(); err != nil {
+		return fmt.Errorf("git log: %w", err)
+	}
+	return nil
+}
+
+func (c *Command) gitArgs() []string {
 	var args []string
 	if c.Hunk {
 		args = append(args, "-c", "core.pager=hunk pager")
@@ -77,15 +89,7 @@ func (c *Command) RunE(cmd *cobra.Command, _ []string) error {
 	if c.Stat {
 		args = append(args, "--stat")
 	}
-	git := exec.CommandContext(cmd.Context(), "git", args...)
-	git.Dir = c.Service.Repository.Dir
-	git.Stdin = c.Input
-	git.Stdout = c.Output
-	git.Stderr = c.Terminal
-	if err := git.Run(); err != nil {
-		return fmt.Errorf("git log: %w", err)
-	}
-	return nil
+	return args
 }
 
 func wantsPatch(patch, difft, hunk bool) bool {
