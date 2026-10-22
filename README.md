@@ -42,14 +42,10 @@ Remove any manually installed copies of the git-review extension or skill to avo
 Use `/feedback` in Pi to ask the model to retrieve and address saved feedback with the git-review skill.
 
 The extension source lives in [`pi/extensions/git-review/`](pi/extensions/git-review/), with `index.ts` as its entry point and tests in `tests/`.
-It publishes review counts for other extensions and asks the model to use the git-review skill when feedback exists after an agent run.
-It defers model notices while a review is active for the current branch.
-Deferred feedback remains eligible for notification after the review ends.
-Activity-query failures suppress notices rather than assume that review ended.
-It runs after the mise on-stop hook when the mise-hooks extension is present.
-Interactive and RPC sessions also check every five seconds while the agent is idle.
-Idle checks can deliver deferred feedback without another agent run.
-An aborted run suspends idle notices until a non-aborted run settles.
+It publishes review counts for other extensions.
+It never messages the model on its own; feedback handling starts only with `/feedback`.
+It publishes after the mise on-stop hook when the mise-hooks extension is present.
+Interactive and RPC sessions also refresh the published counts every five seconds while the agent is idle.
 Monitoring stops when the session shuts down.
 
 Pi 1.1.0 does not support a package subdirectory in a Git install source.

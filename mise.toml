@@ -53,6 +53,21 @@ hk install --mise
 description = "Refresh from template"
 run = "git tpl update && git tpl merge"
 
+[tasks.sync-local]
+description = "Copy the skill and Pi extension into existing local installs"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+skill_dst="$HOME/.agents/skills/git-review"
+extension_dst="$HOME/.pi/agent/extensions/git-review"
+if [ -d "$skill_dst" ]; then
+  rsync -rv skills/git-review/ "$skill_dst/"
+fi
+if [ -d "$extension_dst" ]; then
+  rsync -rv pi/extensions/git-review/ "$extension_dst/"
+fi
+'''
+
 [tasks.pre-commit]
 description = "Format staged files"
 usage = 'arg "[staged_files]" var=#true'
