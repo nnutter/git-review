@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -142,6 +143,32 @@ func (r Repository) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 	}
 	return view, nil
+}
+
+// WarmCache fingerprints only the current feature stack containing ref.
+// An empty ref selects HEAD. Missing entries for other stacks remain untouched.
+func (r Repository) WarmCache(ctx context.Context, ref string) error {
+	if ref == "" {
+		ref = "HEAD"
+	}
+	sha, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return err
+	}
+	view, repo, err := r.stackView(ctx)
+	if err != nil {
+		return err
+	}
+	for _, stack := range view.Stacks {
+		if !slices.Contains(stack.Commits, sha) {
+			continue
+		}
+		view.Stacks = []Stack{stack}
+		cache := newPatchCache(ctx, r, view, repo)
+		_, err := cache.hash(ctx, r, stack.Base, stack.Tip)
+		return err
+	}
+	return fmt.Errorf("commit %s is not in the current feature range", sha)
 }
 
 func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {

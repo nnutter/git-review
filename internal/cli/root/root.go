@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nnutter/git-review/internal/cli/approve"
+	"github.com/nnutter/git-review/internal/cli/cache"
 	"github.com/nnutter/git-review/internal/cli/commits"
 	"github.com/nnutter/git-review/internal/cli/feedback"
 	"github.com/nnutter/git-review/internal/cli/files"
@@ -85,6 +86,7 @@ func (c *Command) build() *cobra.Command {
 	root.PersistentFlags().BoolVar(&c.Debug, "debug", false, "Write diagnostic logs to stderr")
 	root.PersistentFlags().BoolVar(&c.JSON, "json", c.JSON, "Emit a versioned JSON result without interactive prompts")
 	approve.Install(root, c.Service, c.Output)
+	cache.Install(root, c.Service.Repository, c.Output)
 	commits.Install(root, c.Service, c.Input, c.Output, c.Terminal)
 	feedback.Install(root, c.Service, c.Output)
 	files.Install(root, c.Service, c.Input, c.Output, c.Terminal)
