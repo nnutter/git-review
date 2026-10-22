@@ -36,7 +36,9 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	}))
 	before, err := os.ReadFile(view.Path)
 	require.NoError(t, err)
-	want := []review.StateCount{{State: "needs_review", Count: 2}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 2}}
+	// The feedback stack has newer stacks above it, so its feedback is not reported.
+	want := []review.StateCount{{State: "needs_review", Count: 3}, {State: "reviewing", Count: 1}, {State: "feedback"}, {State: "incomplete", Count: 1}, {State: "approved", Count: 2}}
+	entryStates := []string{"needs_review", "reviewing", "needs_review", "incomplete", "approved"}
 	for _, args := range [][]string{{"status", "--json"}, {"--json", "status"}} {
 		out, terminal, err := executeBinary(t, binary, dir, args...)
 		require.NoError(t, err)
@@ -53,7 +55,7 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 		require.Len(t, result.Entries, len(view.Stacks))
 		for i, entry := range result.Entries {
 			require.Equal(t, view.Stacks[i], entry.Stack)
-			require.Equal(t, want[i].State, entry.Status)
+			require.Equal(t, entryStates[i], entry.Status)
 		}
 		require.Len(t, result.Active, 1)
 		require.Equal(t, "reviewing", result.Active[0].ID)
@@ -70,7 +72,7 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	for i, stack := range view.Stacks {
 		require.Contains(t, out, display.ShortStack(stack))
 		require.Contains(t, out, stack.Subject)
-		require.Contains(t, out, display.StatusLabel(want[i].State))
+		require.Contains(t, out, display.StatusLabel(entryStates[i]))
 	}
 	filtered, terminal, err := executeBinary(t, binary, dir, "status", "--needs-review")
 	require.NoError(t, err)
@@ -88,7 +90,7 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	require.Len(t, result.Entries, 4)
 	for i, entry := range result.Entries {
 		require.Equal(t, view.Stacks[i], entry.Stack)
-		require.Equal(t, want[i].State, entry.Status)
+		require.Equal(t, entryStates[i], entry.Status)
 	}
 	require.Len(t, result.View.Stacks, 5)
 	require.Len(t, result.Active, 1)
@@ -101,7 +103,7 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	out, _, err = executeBinary(t, binary, dir, "status", "--json")
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 5}, {State: "reviewing", Count: 1}, {State: "feedback", Count: 1}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
+	require.Equal(t, []review.StateCount{{State: "needs_review", Count: 6}, {State: "reviewing", Count: 1}, {State: "feedback"}, {State: "incomplete", Count: 1}, {State: "approved", Count: 0}}, result.Summary)
 	assertStatusVerbosity(t, binary, dir, out)
 	git(t, dir, "reset", "--hard", "main")
 	out, _, err = executeBinary(t, binary, dir, "status", "--json")
@@ -128,7 +130,7 @@ func assertStatusVerbosity(t *testing.T, binary, dir, out string) {
 			require.NotContains(t, text, "Previous version (historical):")
 		} else {
 			require.Contains(t, text, "Previous version (historical): Review approved:")
-			require.Contains(t, text, "Review feedback:")
+			require.NotContains(t, text, "Review feedback:")
 			require.Contains(t, text, "Saved review details")
 			require.Less(t, strings.LastIndex(text, "Saved review details"), strings.Index(text, "COMMITS (inclusive)"))
 		}

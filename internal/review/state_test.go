@@ -96,7 +96,7 @@ func TestApprovalWithPendingAttemptsOutsideRange(t *testing.T) {
 			result, err := service.Status(t.Context(), false)
 			require.NoError(t, err)
 			require.Len(t, result.Entries, 4)
-			require.Equal(t, "feedback", result.Entries[0].Status)
+			require.Equal(t, "needs_review", result.Entries[0].Status) // Newer stacks address earlier feedback.
 			require.Equal(t, "approved", result.Entries[1].Status)
 			require.Equal(t, "approved", result.Entries[2].Status)
 			require.Equal(t, "feedback", result.Entries[3].Status)

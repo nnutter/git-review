@@ -169,6 +169,7 @@ func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 		return Result{}, err
 	}
 	entries := entriesFor(view, state)
+	withoutAddressedFeedback(entries)
 	result := resultFromEntries("status", view, state, entries)
 	result.Summary = countStates(entries)
 	if !needsReview {
@@ -337,6 +338,18 @@ func entryFor(state State, stack Stack) Entry {
 		entry.Status = entry.Attempt.Status
 	}
 	return entry
+}
+
+// withoutAddressedFeedback reports feedback on every stack except the newest as
+// needs_review without its attempt. A newer stack shows the model responded.
+func withoutAddressedFeedback(entries []Entry) {
+	for i := range len(entries) - 1 {
+		if entries[i].Status != "feedback" {
+			continue
+		}
+		entries[i].Status = "needs_review"
+		entries[i].Attempt = nil
+	}
 }
 
 func entriesFor(view Snapshot, state State) []Entry {
