@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/log/v2"
@@ -105,10 +106,16 @@ type Snapshot struct {
 	Path   string  `json:"statePath"`
 }
 
+// NewRepository creates command-scoped diagnostics for a source checkout.
+func NewRepository(dir string, logger *log.Logger) Repository {
+	return Repository{Dir: dir, Logger: logger, missingIDWarning: new(sync.Once)}
+}
+
 // Repository executes Git in the source checkout.
 type Repository struct {
-	Dir    string
-	Logger *log.Logger
+	Dir              string
+	Logger           *log.Logger
+	missingIDWarning *sync.Once
 }
 
 var quietLogger = log.New(io.Discard)
@@ -343,7 +350,26 @@ func (r Repository) stacks(repo, base string, history []historyCommit) ([]Stack,
 		targets[subject] = append(targets[subject], len(stacks)-1)
 		parent = sha
 	}
+	warnMissingChangeIDs(r, stacks)
 	return stacks, nil
+}
+
+func warnMissingChangeIDs(r Repository, stacks []Stack) {
+	if r.missingIDWarning == nil {
+		return
+	}
+	missing := 0
+	for _, stack := range stacks {
+		if stack.ChangeID == "" {
+			missing++
+		}
+	}
+	if missing == 0 {
+		return
+	}
+	r.missingIDWarning.Do(func() {
+		r.logger().Warn("Original commits lack Change-Id trailers; add them to improve lineage tracking after rewrites", "commits", missing)
+	})
 }
 
 func detachedHEADExit(err error) bool {

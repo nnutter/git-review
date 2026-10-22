@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -18,8 +19,8 @@ func TestStatusCountsCurrentCommitsInStateOrder(t *testing.T) {
 	binary := buildGitReview(t)
 	dir := featureRepo(t)
 	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Add feature")
-	for _, subject := range []string{"Active", "Feedback", "Partial", "Approved"} {
-		git(t, dir, "commit", "--allow-empty", "-m", subject)
+	for i, subject := range []string{"Active", "Feedback", "Partial", "Approved"} {
+		git(t, dir, "commit", "--allow-empty", "-m", fmt.Sprintf("%s\n\nChange-Id: I%040x", subject, i))
 	}
 	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Approved")
 	view, err := (review.Repository{Dir: dir}).Snapshot(t.Context())
@@ -167,6 +168,22 @@ func TestStatusWithoutReviewHistory(t *testing.T) {
 	filtered, _, err := execute(t, dir, "status", "--needs-review")
 	require.NoError(t, err)
 	require.Equal(t, "No reviews pending.\n", filtered)
+}
+
+func TestMissingChangeIDWarning(t *testing.T) {
+	dir := featureRepo(t)
+	git(t, dir, "commit", "--allow-empty", "-m", "Missing ID")
+	git(t, dir, "commit", "--allow-empty", "-m", "fixup! Missing ID")
+	git(t, dir, "commit", "--allow-empty", "-m", "Another missing ID")
+	// Approve takes several snapshots. The warning must occur once, count
+	// originals only, and leave machine-readable stdout intact.
+	out, terminal, err := execute(t, dir, "approve", "HEAD", "--json")
+	require.NoError(t, err)
+	var result review.Result
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.Equal(t, "approved", result.Status)
+	require.Equal(t, 1, strings.Count(terminal, "lack Change-Id"))
+	require.Contains(t, terminal, "commits=2")
 }
 
 func TestStatusDebugLogsStayOffJSON(t *testing.T) {
