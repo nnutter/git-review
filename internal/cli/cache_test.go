@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -48,6 +49,45 @@ func TestCacheWarmTargetsCurrentStack(t *testing.T) {
 			require.Equal(t, 1, strings.Count(terminal, "Patch cache miss"))
 		})
 	}
+}
+
+func TestCachePruneSharedRepositoryCache(t *testing.T) {
+	dir := featureRepo(t)
+	out, terminal, err := execute(t, dir, "cache", "prune")
+	require.NoError(t, err)
+	require.Empty(t, out)
+	require.Empty(t, terminal)
+	cache := filepath.Join(dir, ".git", "git-review", "cache", "patch-v2")
+	require.NoDirExists(t, cache, "pruning an absent cache must not create it")
+	require.NoError(t, os.MkdirAll(cache, 0o700))
+	stale := filepath.Join(cache, strings.Repeat("a", 64)+".patch")
+	fresh := filepath.Join(cache, strings.Repeat("b", 64)+".patch")
+	for _, path := range []string{stale, fresh} {
+		require.NoError(t, os.WriteFile(path, []byte("empty\n"), 0o600))
+	}
+	old := time.Now().Add(-31 * 24 * time.Hour)
+	require.NoError(t, os.Chtimes(stale, old, old))
+	state := filepath.Join(dir, ".git", "tuicr-reviews", "preserve.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(state), 0o700))
+	require.NoError(t, os.WriteFile(state, []byte("not valid review history"), 0o600))
+
+	// Pruning uses the common Git directory, even from a detached linked
+	// worktree without an upstream or readable review state.
+	worktree := filepath.Join(t.TempDir(), "linked")
+	git(t, dir, "worktree", "add", "--detach", worktree)
+	out, _, err = execute(t, worktree, "cache", "prune", "--json")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"version":1,"command":"prune","status":"ok"}`, out)
+	require.NoFileExists(t, stale)
+	require.FileExists(t, fresh)
+	contents, err := os.ReadFile(state)
+	require.NoError(t, err)
+	require.Equal(t, "not valid review history", string(contents))
+
+	_, _, err = execute(t, dir, "cache", "prune", "extra")
+	require.Error(t, err)
+	_, _, err = execute(t, t.TempDir(), "cache", "prune")
+	require.ErrorContains(t, err, "inside a Git repository")
 }
 
 func TestCacheWarmErrorsAndJSON(t *testing.T) {

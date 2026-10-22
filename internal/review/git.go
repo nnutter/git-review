@@ -121,6 +121,16 @@ type Repository struct {
 
 var quietLogger = log.New(io.Discard)
 
+// PruneCache applies the maintenance retention limits to the shared cache.
+// Repository discovery does not require a branch, upstream, or review history.
+func (r Repository) PruneCache(ctx context.Context) error {
+	common, err := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	return prunePatchCache(ctx, filepath.Join(common, "git-review", "cache", "patch-v2"))
+}
+
 // Resolve accepts a commit reference but never interprets it as an option.
 func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
 	return r.git(ctx, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")

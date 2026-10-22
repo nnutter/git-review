@@ -27,7 +27,17 @@ func Install(parent *cobra.Command, repository review.Repository, out io.Writer)
 			return writeResult(cmd, out)
 		},
 	}
-	cmd.AddCommand(warm)
+	prune := &cobra.Command{
+		Use: "prune", Short: "Prune old patch fingerprints and enforce cache limits",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := repository.PruneCache(cmd.Context()); err != nil {
+				return err
+			}
+			return writeResult(cmd, out)
+		},
+	}
+	cmd.AddCommand(warm, prune)
 	parent.AddCommand(cmd)
 }
 
