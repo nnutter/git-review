@@ -9,7 +9,7 @@ Cobra and Fang provide the command interface, Lip Gloss renders summaries, and H
 - Linux or macOS.
 - Git and tuicr on `PATH`.
 - A checked-out feature branch with a configured Git upstream.
-- Go 1.27.1 or later to build from source.
+- Go 1.27.3 or later to build from source.
 
 ```sh
 go install github.com/nnutter/git-review@latest
