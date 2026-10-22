@@ -101,6 +101,7 @@ usage = 'arg "[staged_files]" var=#true'
 run = [
   "go tool gitleaks git --redact --pre-commit --staged",
   "mise run fixers ${usage_staged_files}",
+  "mise run tests",
 ]
 
 [tasks.tests]
