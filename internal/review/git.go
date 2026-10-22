@@ -217,13 +217,14 @@ func (r Repository) git(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
+func (r Repository) gitInput(ctx context.Context, input string, args ...string) (string, error) {
 	started := time.Now()
 	defer func() { r.logger().Debug("Git command completed", "args", args, "elapsed", time.Since(started)) }()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
+	cmd.Stdin = strings.NewReader(input)
 	// Keep Git diagnostics stable so repository discovery errors can be identified.
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var stderr strings.Builder
@@ -236,6 +237,10 @@ func (r Repository) gitOutput(ctx context.Context, args ...string) (string, erro
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return string(out), nil
+}
+
+func (r Repository) gitOutput(ctx context.Context, args ...string) (string, error) {
+	return r.gitInput(ctx, "", args...)
 }
 
 func (r Repository) logger() *log.Logger {
