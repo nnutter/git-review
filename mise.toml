@@ -32,6 +32,23 @@ description = "Compare local benchmark records as CSV in branch order, or select
 usage = 'arg "[refs]" var=#true'
 run = "scripts/benchmark-report ${usage_refs}"
 
+# STATUS_PROFILE_COMMITS defaults to 350. Set STATUS_PROFILE_REPOSITORY to
+# profile an existing checkout instead. Both modes warm its patch cache first.
+[tasks.profile-status]
+description = "Generate a warm-cache wall-clock flame graph for status"
+run = "bash contrib/profile-status.sh"
+
+[tasks.profile-status-serve]
+description = "Generate and serve the status flame graph on localhost:8000"
+depends = ["profile-status"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+output="$(git rev-parse --absolute-git-dir)/status-profile"
+printf 'Profile: http://127.0.0.1:%s/\n' "${STATUS_PROFILE_PORT:-8000}"
+exec uvx python -m http.server "${STATUS_PROFILE_PORT:-8000}" --bind 127.0.0.1 --directory "$output"
+'''
+
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
 env.GIT_REVIEW_REAL_TUICR = "1"

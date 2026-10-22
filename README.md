@@ -560,6 +560,28 @@ mise run ci-tests
 mise run linters
 ```
 
+### Profile status performance
+
+Generate a wall-clock flame graph and serve it at `http://127.0.0.1:8000/`:
+
+```sh
+mise run profile-status-serve
+```
+
+Use `mise run profile-status` to generate the files without starting a server.
+These tasks require `uvx`, `curl`, and Perl in addition to Go.
+The default fixture has 350 independent commits and no saved review history.
+Set `STATUS_PROFILE_COMMITS` to change its size, or set `STATUS_PROFILE_REPOSITORY` to an existing checkout path.
+The task warms the patch cache before capture, including when you select an existing checkout.
+Set `STATUS_PROFILE_PORT` to change the server port.
+
+Artifacts remain in `status-profile/` under the worktree's Git directory.
+The server exposes only that artifact directory and binds to localhost.
+The profiling entry point and dependencies use temporary files, not changes to `go.mod`.
+See [`contrib/profile-status.sh`](contrib/profile-status.sh) and the tasks in [`mise.toml`](mise.toml).
+
+### Test suites
+
 The standard suite includes compiled-binary tests for listing, approval, errors, JSON output, and persistence across invocations.
 Focused unit and integration tests also use synthetic saved sessions and fake tuicr executables.
 
