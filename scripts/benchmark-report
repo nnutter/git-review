@@ -37,4 +37,4 @@ for record in "${records[@]}"; do
 done
 
 # Pin benchstat without adding a runtime or tool dependency to the Go module.
-exec go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e "${inputs[@]}"
+exec go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e -format csv "${inputs[@]}"

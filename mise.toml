@@ -28,7 +28,7 @@ description = "Save local Go benchmark samples for the current commit"
 run = "scripts/benchmark-record"
 
 [tasks.benchmark-report]
-description = "Compare local benchmark records in branch order, or selected refs"
+description = "Compare local benchmark records as CSV in branch order, or selected refs"
 usage = 'arg "[refs]" var=#true'
 run = "scripts/benchmark-report ${usage_refs}"
 
