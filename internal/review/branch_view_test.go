@@ -29,7 +29,8 @@ func TestBranchViewUpstream(t *testing.T) {
 				gitTest(t, r.Dir, "branch", "--unset-upstream")
 			}
 
-			if mode == "missing ref" || mode == "no upstream" || mode == "unmapped" {
+			switch mode {
+			case "missing ref", "no upstream", "unmapped":
 				_, _, err := r.branchView(t.Context())
 				require.ErrorContains(t, err, "requires a configured Git upstream")
 				return

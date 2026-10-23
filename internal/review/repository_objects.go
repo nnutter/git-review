@@ -7,8 +7,39 @@ import (
 	"path/filepath"
 
 	git "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 )
+
+func configuredUpstream(objects *git.Repository, name string) (plumbing.ReferenceName, error) {
+	cfg, err := objects.ConfigScoped(config.SystemScope)
+	if err != nil {
+		return "", err
+	}
+	branch := cfg.Branches[name]
+	if branch == nil {
+		return "", nil
+	}
+	if branch.Remote == "" {
+		return "", nil
+	}
+	if branch.Merge == "" {
+		return "", nil
+	}
+	if branch.Remote == "." {
+		return branch.Merge, nil
+	}
+	remote := cfg.Remotes[branch.Remote]
+	if remote == nil {
+		return "", nil
+	}
+	for _, spec := range remote.Fetch {
+		if spec.Match(branch.Merge) {
+			return spec.Dst(branch.Merge), nil
+		}
+	}
+	return "", nil
+}
 
 func symbolicHEAD(ctx context.Context, dir string) (string, error) {
 	if err := ctx.Err(); err != nil {
