@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	git "github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/config"
 )
 
 // Entry presents the status of one current stack and optional prior lineage.
@@ -201,24 +200,12 @@ func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (
 		return Snapshot{}, err
 	}
 	defer func() { err = errors.Join(err, objects.Close()) }()
-	cfg, err := objects.ConfigScoped(config.SystemScope)
+	target, err := configuredUpstream(objects, view.Branch)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	view.Head = head
-	view.Target = ""
-	if branch := cfg.Branches[view.Branch]; branch != nil && branch.Merge != "" {
-		if branch.Remote == "." {
-			view.Target = branch.Merge.String()
-		} else if remote := cfg.Remotes[branch.Remote]; remote != nil {
-			for _, spec := range remote.Fetch {
-				if spec.Match(branch.Merge) {
-					view.Target = spec.Dst(branch.Merge).String()
-					break
-				}
-			}
-		}
-	}
+	view.Target = target.String()
 	return view, nil
 }
 
