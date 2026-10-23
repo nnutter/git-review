@@ -23,6 +23,15 @@ run = ["go test -race -shuffle=on ./...", "node --test pi/extensions/*/tests/*.t
 description = "Measure snapshot and status performance (not race-instrumented)"
 run = "go test ./internal/review -run '^$' -bench 'Benchmark(Snapshot|Status)$' -benchmem -benchtime=1x -count=5 -timeout=20m"
 
+[tasks.benchmark-record]
+description = "Save local Go benchmark samples for the current commit"
+run = "bash contrib/benchmark-record.sh"
+
+[tasks.benchmark-report]
+description = "Compare local benchmark records in branch order, or selected refs"
+usage = 'arg "[refs]" var=#true'
+run = "bash contrib/benchmark-report.sh ${usage_refs}"
+
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
 env.GIT_REVIEW_REAL_TUICR = "1"

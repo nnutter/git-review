@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+records=()
+if (( $# )); then
+  for ref in "$@"; do
+    commit=$(git rev-parse --verify --end-of-options "$ref^{commit}")
+    record="benchmarks/$commit.txt"
+    if [[ ! -f $record ]]; then
+      printf 'No benchmark record for %s (%s).\n' "$ref" "$commit" >&2
+      exit 1
+    fi
+    records+=("$record")
+  done
+else
+  commits=$(git rev-list --reverse --first-parent "@{upstream}..HEAD")
+  while IFS= read -r commit; do
+    record="benchmarks/$commit.txt"
+    if [[ -f $record ]]; then
+      records+=("$record")
+    fi
+  done <<< "$commits"
+fi
+
+if (( ${#records[@]} == 0 )); then
+  printf 'No benchmark records found. Run mise run benchmark-record first.\n' >&2
+  exit 1
+fi
+
+inputs=()
+for record in "${records[@]}"; do
+  commit=${record##*/}
+  commit=${commit%.txt}
+  git show -s --format='%h %s' "$commit" >&2
+  inputs+=("$(git rev-parse --short "$commit")=$record")
+done
+
+# Pin benchstat without adding a runtime or tool dependency to the Go module.
+exec go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e "${inputs[@]}"
