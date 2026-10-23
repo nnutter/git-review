@@ -3,7 +3,11 @@ package review
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+
+	git "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
 )
 
 // Entry presents the status of one current stack and optional prior lineage.
@@ -180,7 +184,7 @@ func (s Service) Status(ctx context.Context, needsReview bool) (Result, error) {
 
 // File annotation does not require an upstream or linear commit history.
 // Preserve stack validation when there are commit-review attempts to classify.
-func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (Snapshot, error) {
+func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (result Snapshot, err error) {
 	if len(state.Attempts) > 0 {
 		return s.Repository.Snapshot(ctx)
 	}
@@ -188,12 +192,33 @@ func (s Service) feedbackView(ctx context.Context, view Snapshot, state State) (
 	if err != nil {
 		return Snapshot{}, err
 	}
-	target, err := s.Repository.git(ctx, "for-each-ref", "--format=%(upstream)", "refs/heads/"+view.Branch)
+	dir := s.Repository.Dir
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	cfg, err := objects.ConfigScoped(config.SystemScope)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	view.Head = head
-	view.Target = target
+	view.Target = ""
+	if branch := cfg.Branches[view.Branch]; branch != nil && branch.Merge != "" {
+		if branch.Remote == "." {
+			view.Target = branch.Merge.String()
+		} else if remote := cfg.Remotes[branch.Remote]; remote != nil {
+			for _, spec := range remote.Fetch {
+				if spec.Match(branch.Merge) {
+					view.Target = spec.Dst(branch.Merge).String()
+					break
+				}
+			}
+		}
+	}
 	return view, nil
 }
 
