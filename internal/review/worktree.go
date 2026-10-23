@@ -10,13 +10,36 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+
+	git "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/storage/filesystem"
 )
 
 // WorktreePath shares one persistent review checkout across a repository's branches.
-func WorktreePath(repo string) (string, error) {
-	common, err := (Repository{Dir: repo}).git(context.Background(), "rev-parse", "--path-format=absolute", "--git-common-dir")
+func WorktreePath(repo string) (path string, err error) {
+	if repo == "" {
+		repo = "."
+	}
+	objects, err := git.PlainOpenWithOptions(repo, &git.PlainOpenOptions{DetectDotGit: true})
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return "", fmt.Errorf("git-review must be used from inside a Git repository")
+	}
 	if err != nil {
 		return "", err
+	}
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
+	data, err := os.ReadFile(filepath.Join(common, "commondir"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err == nil {
+		path := strings.TrimSpace(string(data))
+		if filepath.IsAbs(path) {
+			common = path
+		} else {
+			common = filepath.Join(common, path)
+		}
 	}
 	common, err = filepath.EvalSymlinks(common)
 	if err != nil {
