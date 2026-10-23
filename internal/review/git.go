@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"charm.land/log/v2"
+	git "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
 )
 
 // Stack identifies an original commit and its adjacent feedback commits.
@@ -132,8 +134,34 @@ func (r Repository) PruneCache(ctx context.Context) error {
 }
 
 // Resolve accepts a commit reference but never interprets it as an option.
-func (r Repository) Resolve(ctx context.Context, ref string) (string, error) {
-	return r.git(ctx, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+func (r Repository) Resolve(ctx context.Context, ref string) (sha string, err error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	// go-git does not evaluate reflog, checkout, or upstream selectors.
+	if strings.Contains(ref, "@{") {
+		return r.git(ctx, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+	}
+	dir := r.Dir
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return "", fmt.Errorf("git-review must be used from inside a Git repository")
+	}
+	if err != nil {
+		return "", err
+	}
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	hash, err := objects.ResolveRevision(plumbing.Revision(ref + "^{commit}"))
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --verify --end-of-options %s^{commit}: %w", ref, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return hash.String(), nil
 }
 
 // Snapshot requires an upstream and a single, linear feature-branch range.
