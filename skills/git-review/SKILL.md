@@ -117,6 +117,13 @@ This command does not collect uncaptured notes from interrupted tuicr sessions.
 Do not use `git-review commits --recover` to retrieve feedback.
 Recovery opens an interactive review and requires the user's choice.
 
+## Discuss questions before making changes
+
+Treat questions in feedback as requests for discussion, not instructions to change code.
+Answer the question first.
+Do not implement a change implied by the question until the user confirms it.
+Apply this rule to both comments and session notes, for commit and file reviews.
+
 ## Prepare the changes
 
 1. Check the feature branch and configured upstream.
