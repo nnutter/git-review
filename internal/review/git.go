@@ -19,7 +19,6 @@ import (
 	"charm.land/log/v2"
 	git "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/storage/filesystem"
 )
 
 // Stack identifies an original commit and its adjacent feedback commits.
@@ -127,33 +126,14 @@ var quietLogger = log.New(io.Discard)
 // PruneCache applies the maintenance retention limits to the shared cache.
 // Repository discovery does not require a branch, upstream, or review history.
 func (r Repository) PruneCache(ctx context.Context) (err error) {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	dir := r.Dir
-	if dir == "" {
-		dir = "."
-	}
-	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
-	if errors.Is(err, git.ErrRepositoryNotExists) {
-		return fmt.Errorf("git-review must be used from inside a Git repository")
-	}
+	objects, err := openRepositoryObjects(ctx, r.Dir)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, objects.Close()) }()
-	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
-	data, err := os.ReadFile(filepath.Join(common, "commondir"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	common, err := repositoryCommonDirectory(objects)
+	if err != nil {
 		return err
-	}
-	if err == nil {
-		path := strings.TrimSpace(string(data))
-		if filepath.IsAbs(path) {
-			common = path
-		} else {
-			common = filepath.Join(common, path)
-		}
 	}
 	return prunePatchCache(ctx, filepath.Join(common, "git-review", "cache", "patch-v2"))
 }
