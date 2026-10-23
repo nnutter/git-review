@@ -2,12 +2,15 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	git "github.com/go-git/go-git/v6"
 )
 
 // FilesOptions selects a working-tree file review.
@@ -78,7 +81,25 @@ func (r FileReviewer) Review(ctx context.Context, options FilesOptions) (FilesRe
 	if err := validateFileScope(options); err != nil {
 		return result, err
 	}
-	repo, err := r.Service.Repository.git(ctx, "rev-parse", "--show-toplevel")
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	dir := r.Service.Repository.Dir
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return result, fmt.Errorf("git-review must be used from inside a Git repository")
+	}
+	if err != nil {
+		return result, err
+	}
+	worktree, err := objects.Worktree()
+	if err = errors.Join(err, objects.Close()); err != nil {
+		return result, err
+	}
+	repo, err := filepath.EvalSymlinks(worktree.Filesystem().Root())
 	if err != nil {
 		return result, err
 	}
