@@ -14,6 +14,20 @@ import (
 	"github.com/go-git/go-git/v6/storage/filesystem"
 )
 
+func openRepositoryObjects(ctx context.Context, dir string) (*git.Repository, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return nil, fmt.Errorf("git-review must be used from inside a Git repository")
+	}
+	return objects, err
+}
+
 func singleMergeBase(objects *git.Repository, head, target string) (string, error) {
 	headCommit, err := objects.CommitObject(plumbing.NewHash(head))
 	if err != nil {

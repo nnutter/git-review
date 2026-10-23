@@ -273,17 +273,7 @@ func changeID(sha, id string, ids map[string]bool) (string, error) {
 }
 
 func (r Repository) checkoutView(ctx context.Context) (view Snapshot, repo string, err error) {
-	if err := ctx.Err(); err != nil {
-		return view, "", err
-	}
-	dir := r.Dir
-	if dir == "" {
-		dir = "."
-	}
-	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
-	if errors.Is(err, git.ErrRepositoryNotExists) {
-		return view, "", fmt.Errorf("git-review must be used from inside a Git repository")
-	}
+	objects, err := openRepositoryObjects(ctx, r.Dir)
 	if err != nil {
 		return view, "", err
 	}
