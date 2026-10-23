@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,16 +48,22 @@ func singleMergeBase(objects *git.Repository, head, target string) (string, erro
 	return bases[0].Hash.String(), nil
 }
 
-func repositoryCommonDirectory(objects *git.Repository) (string, error) {
-	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
-	data, err := os.ReadFile(filepath.Join(common, "commondir"))
+func repositoryCommonDirectory(objects *git.Repository) (path string, err error) {
+	fs := objects.Storer.(*filesystem.Storage).Filesystem()
+	common := fs.Root()
+	file, err := fs.Open("commondir")
 	if errors.Is(err, os.ErrNotExist) {
 		return common, nil
 	}
 	if err != nil {
 		return "", err
 	}
-	path := strings.TrimSpace(string(data))
+	defer func() { err = errors.Join(err, file.Close()) }()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", err
+	}
+	path = strings.TrimSpace(string(data))
 	if filepath.IsAbs(path) {
 		return path, nil
 	}
