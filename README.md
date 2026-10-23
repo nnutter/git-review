@@ -578,7 +578,7 @@ Set `STATUS_PROFILE_PORT` to change the server port.
 Artifacts remain in `status-profile/` under the worktree's Git directory.
 The server exposes only that artifact directory and binds to localhost.
 The profiling entry point and dependencies use temporary files, not changes to `go.mod`.
-See [`contrib/profile-status.sh`](contrib/profile-status.sh) and the tasks in [`mise.toml`](mise.toml).
+See [`scripts/profile-status`](scripts/profile-status) and the tasks in [`mise.toml`](mise.toml).
 
 ### Test suites
 

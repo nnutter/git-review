@@ -36,7 +36,7 @@ run = "scripts/benchmark-report ${usage_refs}"
 # profile an existing checkout instead. Both modes warm its patch cache first.
 [tasks.profile-status]
 description = "Generate a warm-cache wall-clock flame graph for status"
-run = "bash contrib/profile-status.sh"
+run = "scripts/profile-status"
 
 [tasks.profile-status-serve]
 description = "Generate and serve the status flame graph on localhost:8000"
