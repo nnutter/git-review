@@ -11,9 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	git "github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
 )
 
 // ReviewOptions selects a current stack and an explicit recovery choice.
@@ -50,25 +47,10 @@ func (r Reviewer) Review(ctx context.Context, options ReviewOptions) (result Res
 	if err != nil {
 		return result, err
 	}
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
-	dir := r.Service.Repository.Dir
-	if dir == "" {
-		dir = "."
-	}
-	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	branch, err := symbolicHEAD(ctx, r.Service.Repository.Dir)
 	if err != nil {
 		return result, err
 	}
-	head, err := objects.Reference(plumbing.HEAD, false)
-	if err = errors.Join(err, objects.Close()); err != nil {
-		return result, err
-	}
-	if head.Type() != plumbing.SymbolicReference {
-		return result, fmt.Errorf("review requires a branch, not detached HEAD")
-	}
-	branch := head.Target().String()
 	lock, err := lockWorktree(path)
 	if err != nil {
 		return result, err
