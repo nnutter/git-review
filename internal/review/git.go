@@ -20,6 +20,7 @@ import (
 	git "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/storage/filesystem"
 )
 
 // Stack identifies an original commit and its adjacent feedback commits.
@@ -261,22 +262,56 @@ func changeID(sha, id string, ids map[string]bool) (string, error) {
 	return id, nil
 }
 
-func (r Repository) checkoutView(ctx context.Context) (Snapshot, string, error) {
-	var view Snapshot
-	repo, err := r.git(ctx, "rev-parse", "--show-toplevel")
+func (r Repository) checkoutView(ctx context.Context) (view Snapshot, repo string, err error) {
+	if err := ctx.Err(); err != nil {
+		return view, "", err
+	}
+	dir := r.Dir
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return view, "", fmt.Errorf("git-review must be used from inside a Git repository")
+	}
 	if err != nil {
 		return view, "", err
 	}
-	branch, err := r.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
-	if err != nil {
-		return view, "", fmt.Errorf("review requires a branch, not detached HEAD: %w", err)
-	}
-	common, err := r.git(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	worktree, err := objects.Worktree()
 	if err != nil {
 		return view, "", err
 	}
-	view.Branch = branch
-	view.Path = filepath.Join(common, "tuicr-reviews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(branch))))
+	repo, err = filepath.EvalSymlinks(worktree.Filesystem().Root())
+	if err != nil {
+		return view, "", err
+	}
+	head, err := objects.Reference(plumbing.HEAD, false)
+	if err != nil {
+		return view, "", err
+	}
+	if head.Type() != plumbing.SymbolicReference {
+		return view, "", fmt.Errorf("review requires a branch, not detached HEAD")
+	}
+	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
+	data, err := os.ReadFile(filepath.Join(common, "commondir"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return view, "", err
+	}
+	if err == nil {
+		path := strings.TrimSpace(string(data))
+		if filepath.IsAbs(path) {
+			common = path
+		} else {
+			common = filepath.Join(common, path)
+		}
+	}
+	common, err = filepath.EvalSymlinks(common)
+	if err != nil {
+		return view, "", err
+	}
+	view.Branch = head.Target().Short()
+	view.Path = filepath.Join(common, "tuicr-reviews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(view.Branch))))
 	return view, repo, nil
 }
 
