@@ -25,12 +25,12 @@ run = "go test ./internal/review -run '^$' -bench 'Benchmark(Snapshot|Status)$' 
 
 [tasks.benchmark-record]
 description = "Save local Go benchmark samples for the current commit"
-run = "bash contrib/benchmark-record.sh"
+run = "scripts/benchmark-record"
 
 [tasks.benchmark-report]
 description = "Compare local benchmark records in branch order, or selected refs"
 usage = 'arg "[refs]" var=#true'
-run = "bash contrib/benchmark-report.sh ${usage_refs}"
+run = "scripts/benchmark-report ${usage_refs}"
 
 [tasks.functional-tests]
 description = "Test the compiled CLI and real tuicr through pseudo-terminals"
