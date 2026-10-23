@@ -171,11 +171,20 @@ func validateReviewCheckout(ctx context.Context, source Repository, path string)
 	return validateReviewRegistration(ctx, checkout, path)
 }
 
-func validateReviewRegistration(ctx context.Context, checkout Repository, path string) error {
-	gitDir, err := checkout.git(ctx, "rev-parse", "--absolute-git-dir")
+func validateReviewRegistration(ctx context.Context, checkout Repository, path string) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	dir := checkout.Dir
+	if dir == "" {
+		dir = "."
+	}
+	objects, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
 		return err
 	}
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	gitDir := objects.Storer.(*filesystem.Storage).Filesystem().Root()
 	backlink, err := os.ReadFile(filepath.Join(gitDir, "gitdir"))
 	if err != nil {
 		return fmt.Errorf("invalid review worktree registration: %w", err)
