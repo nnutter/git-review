@@ -45,8 +45,9 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 output="$(git rev-parse --absolute-git-dir)/status-profile"
-printf 'Profile: http://127.0.0.1:%s/\n' "${STATUS_PROFILE_PORT:-8000}"
-exec uvx python -m http.server "${STATUS_PROFILE_PORT:-8000}" --bind 127.0.0.1 --directory "$output"
+tailscale_ip="$(tailscale ip --4)"
+printf 'Profile: http://%s:%s/\n' "${STATUS_PROFILE_BIND:-$tailscale_ip}" "${STATUS_PROFILE_PORT:-8000}"
+exec uvx python -m http.server "${STATUS_PROFILE_PORT:-8000}" --bind "${STATUS_PROFILE_BIND:-$tailscale_ip}" --directory "$output"
 '''
 
 [tasks.functional-tests]
