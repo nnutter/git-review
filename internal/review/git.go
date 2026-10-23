@@ -303,18 +303,9 @@ func (r Repository) checkoutView(ctx context.Context) (view Snapshot, repo strin
 	if head.Type() != plumbing.SymbolicReference {
 		return view, "", fmt.Errorf("review requires a branch, not detached HEAD")
 	}
-	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
-	data, err := os.ReadFile(filepath.Join(common, "commondir"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	common, err := repositoryCommonDirectory(objects)
+	if err != nil {
 		return view, "", err
-	}
-	if err == nil {
-		path := strings.TrimSpace(string(data))
-		if filepath.IsAbs(path) {
-			common = path
-		} else {
-			common = filepath.Join(common, path)
-		}
 	}
 	common, err = filepath.EvalSymlinks(common)
 	if err != nil {

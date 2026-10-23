@@ -4,12 +4,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	git "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/storage/filesystem"
 )
+
+func repositoryCommonDirectory(objects *git.Repository) (string, error) {
+	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
+	data, err := os.ReadFile(filepath.Join(common, "commondir"))
+	if errors.Is(err, os.ErrNotExist) {
+		return common, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSpace(string(data))
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	return filepath.Join(common, path), nil
+}
 
 func configuredUpstream(objects *git.Repository, name string) (plumbing.ReferenceName, error) {
 	cfg, err := objects.ConfigScoped(config.SystemScope)
