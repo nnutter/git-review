@@ -14,6 +14,25 @@ import (
 	"github.com/go-git/go-git/v6/storage/filesystem"
 )
 
+func singleMergeBase(objects *git.Repository, head, target string) (string, error) {
+	headCommit, err := objects.CommitObject(plumbing.NewHash(head))
+	if err != nil {
+		return "", err
+	}
+	targetCommit, err := objects.CommitObject(plumbing.NewHash(target))
+	if err != nil {
+		return "", err
+	}
+	bases, err := headCommit.MergeBase(targetCommit)
+	if err != nil {
+		return "", err
+	}
+	if len(bases) != 1 {
+		return "", fmt.Errorf("review requires one merge-base with upstream")
+	}
+	return bases[0].Hash.String(), nil
+}
+
 func repositoryCommonDirectory(objects *git.Repository) (string, error) {
 	common := objects.Storer.(*filesystem.Storage).Filesystem().Root()
 	data, err := os.ReadFile(filepath.Join(common, "commondir"))
