@@ -448,8 +448,8 @@ func (r Repository) reviewBranch(ctx context.Context) (string, error) {
 	return "", err
 }
 
-func (r Repository) stackView(ctx context.Context) (Snapshot, string, error) {
-	view, repo, err := r.branchView(ctx)
+func (r Repository) stackView(ctx context.Context) (view Snapshot, repo string, err error) {
+	view, repo, err = r.branchView(ctx)
 	if err != nil {
 		return view, repo, err
 	}
@@ -461,13 +461,27 @@ func (r Repository) stackView(ctx context.Context) (Snapshot, string, error) {
 	if err != nil {
 		return view, repo, err
 	}
-	view.Base, err = r.git(ctx, "merge-base", "--all", view.Head, targetSHA)
+	objects, err := git.PlainOpen(repo)
 	if err != nil {
 		return view, repo, err
 	}
-	if strings.Contains(view.Base, "\n") {
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	head, err := objects.CommitObject(plumbing.NewHash(view.Head))
+	if err != nil {
+		return view, repo, err
+	}
+	target, err := objects.CommitObject(plumbing.NewHash(targetSHA))
+	if err != nil {
+		return view, repo, err
+	}
+	bases, err := head.MergeBase(target)
+	if err != nil {
+		return view, repo, err
+	}
+	if len(bases) != 1 {
 		return view, repo, fmt.Errorf("review requires one merge-base with upstream")
 	}
+	view.Base = bases[0].Hash.String()
 	history, err := readHistory(ctx, r, repo, view.Base, view.Head)
 	if err != nil {
 		return view, repo, err
