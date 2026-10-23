@@ -18,6 +18,7 @@ import (
 
 	"charm.land/log/v2"
 	git "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 )
 
@@ -209,16 +210,40 @@ func (r Repository) WarmCache(ctx context.Context, ref string) error {
 	return fmt.Errorf("commit %s is not in the current feature range", sha)
 }
 
-func (r Repository) branchView(ctx context.Context) (Snapshot, string, error) {
-	view, repo, err := r.checkoutView(ctx)
+func (r Repository) branchView(ctx context.Context) (view Snapshot, repo string, err error) {
+	view, repo, err = r.checkoutView(ctx)
 	if err != nil {
 		return view, "", err
 	}
-	target, err := r.git(ctx, "rev-parse", "--symbolic-full-name", "@{upstream}")
+	objects, err := git.PlainOpen(repo)
 	if err != nil {
+		return view, "", err
+	}
+	defer func() { err = errors.Join(err, objects.Close()) }()
+	cfg, err := objects.ConfigScoped(config.SystemScope)
+	if err != nil {
+		return view, "", err
+	}
+	branch := cfg.Branches[view.Branch]
+	if branch == nil || branch.Remote == "" || branch.Merge == "" {
+		return view, "", fmt.Errorf("branch %s requires a configured Git upstream", view.Branch)
+	}
+	target := branch.Merge
+	if branch.Remote != "." {
+		target = ""
+		if remote := cfg.Remotes[branch.Remote]; remote != nil {
+			for _, spec := range remote.Fetch {
+				if spec.Match(branch.Merge) {
+					target = spec.Dst(branch.Merge)
+					break
+				}
+			}
+		}
+	}
+	if _, err := objects.Reference(target, true); err != nil {
 		return view, "", fmt.Errorf("branch %s requires a configured Git upstream: %w", view.Branch, err)
 	}
-	view.Target = target
+	view.Target = target.String()
 	return view, repo, nil
 }
 
