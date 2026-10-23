@@ -138,7 +138,7 @@ func registeredReviewWorktree(ctx context.Context, source Repository, path strin
 	return false, nil
 }
 
-func validateReviewCheckout(ctx context.Context, source Repository, path string) (err error) {
+func validateReviewCheckout(ctx context.Context, source Repository, path string) error {
 	expected, err := WorktreePath(source.Dir)
 	if err != nil {
 		return err
@@ -154,19 +154,7 @@ func validateReviewCheckout(ctx context.Context, source Repository, path string)
 		return fmt.Errorf("review checkout must not be a symlink: %s", path)
 	}
 	checkout := Repository{Dir: path}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	objects, err := git.PlainOpen(path)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, objects.Close()) }()
-	worktree, err := objects.Worktree()
-	if err != nil {
-		return err
-	}
-	root, err := filepath.EvalSymlinks(worktree.Filesystem().Root())
+	root, err := workingTreeRoot(ctx, path)
 	if err != nil {
 		return err
 	}
